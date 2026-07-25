@@ -68,16 +68,11 @@ fly deploy
 
 4. Open `https://presence-YOURNAME.fly.dev`, sign in, install as PWA on your phone.
 
-Change seed passwords in `backend/users.json` (and rebuild/redeploy) before sharing with friends. The free tier may stop machines when idle — first load can be slow; presence requires the machine running.
-
-### Seed accounts (change these passwords)
-
-| Username | Password (dev) | Role  |
-|----------|----------------|-------|
-| hub      | hub-pass-change-me | hub |
-| alice    | alice-pass-change-me | spoke |
-| bob      | bob-pass-change-me | spoke |
-| dummy    | dummy-pass-change-me | spoke (test bot) |
+Generate strong, unique passwords and store only their Argon2id hashes in
+`backend/users.json` before deploying. Keep plaintext credentials in a
+gitignored local file and share them out of band. The free tier may stop
+machines when idle — first load can be slow; presence requires the machine
+running.
 
 ### Test dummy bot
 
@@ -87,12 +82,19 @@ A Python spoke client that stays online and replies — useful without juggling 
 cd bot
 pip install -r requirements.txt
 # Echo (default) — reverse-ish reply after a short typing pause
-python main.py
+BOT_PASSWORD="<dummy-password>" python main.py
 # Or Ollama (requires `ollama serve` + a pulled model)
-python main.py --mode ollama --model llama3.2
+BOT_PASSWORD="<dummy-password>" python main.py --mode ollama --model llama3.2
 ```
 
 Log in as `hub` in the browser, open **Dummy**, send a message. Kill the bot process to exercise `peer_offline` / thread clear.
+
+In PowerShell, set the environment variable first:
+
+```powershell
+$env:BOT_PASSWORD = "<dummy-password>"
+python main.py
+```
 
 Identity key is stored at `bot/identity_key.json` (gitignored). Dev fixture only — do not use for real friends.
 
@@ -131,8 +133,8 @@ Keep exactly one user with `"role": "hub"`.
 
 ## Verification checklist
 
-- Log in as `alice` and `bob` in two browsers — neither can see or message the other
-- Hub sees both; messaging works only when the peer is online
+- Log in as two spoke users in separate browsers — neither can see or message the other
+- Hub sees both spokes; messaging works only when the peer is online
 - Send while peer offline → ack `undelivered`, no queue
 - Peer disconnect clears the live thread after a short transition
 - Run `python bot/main.py`, chat with Dummy from hub, then Ctrl+C the bot to see offline transition

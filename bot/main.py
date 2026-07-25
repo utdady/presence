@@ -2,8 +2,8 @@
 """Presence spoke bot — echo (default) or Ollama-backed test dummy.
 
 Usage:
-  python main.py
-  python main.py --mode ollama --model llama3.2
+  BOT_PASSWORD=... python main.py
+  BOT_PASSWORD=... python main.py --mode ollama --model llama3.2
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
 
@@ -251,7 +252,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Presence test dummy (spoke client)")
     p.add_argument("--api", default="http://127.0.0.1:8000", help="Backend HTTP base URL")
     p.add_argument("--username", default="dummy")
-    p.add_argument("--password", default="dummy-pass-change-me")
     p.add_argument("--mode", choices=("echo", "ollama"), default="echo")
     p.add_argument("--ollama-url", default="http://127.0.0.1:11434")
     p.add_argument("--model", default="llama3.2", help="Ollama model name")
@@ -261,6 +261,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def amain(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+    password = os.environ.get("BOT_PASSWORD")
+    if not password:
+        raise SystemExit("Set BOT_PASSWORD to the dummy account password")
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -269,7 +272,7 @@ async def amain(argv: list[str] | None = None) -> None:
     bot = PresenceBot(
         api_base=args.api,
         username=args.username,
-        password=args.password,
+        password=password,
         replier=build_replier(args),
     )
     log.info("Mode=%s identity=%s…", args.mode, bot.public_key[:12])
