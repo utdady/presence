@@ -1,0 +1,38 @@
+# Presence — fly.io
+# Setup:
+#   fly auth login
+#   fly apps create presence-YOURNAME   # pick a free unique name
+#   fly secrets set JWT_SECRET="$(openssl rand -hex 32)"
+#   fly deploy
+#
+# Then open https://presence-YOURNAME.fly.dev
+
+app = 'presence-addy'
+primary_region = 'sin'
+
+[build]
+
+[env]
+  CORS_ORIGINS = '*'
+  STATIC_DIR = '/app/frontend/dist'
+  USERS_FILE = '/app/users.json'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

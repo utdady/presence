@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.env
+*.pyc
+node_modules/
+frontend/dist/
+.DS_Store
+
+# Plaintext credentials — never commit
+credentials.local.json
+*.local.json

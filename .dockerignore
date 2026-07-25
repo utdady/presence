@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+**/.env
+frontend/node_modules
+frontend/dist
+bot/identity_key.json
+credentials.local.json
+**/.DS_Store
+*.md
+!README.md
