@@ -9,3 +9,6 @@ frontend/dist/
 # Plaintext credentials — never commit
 credentials.local.json
 *.local.json
+
+# Real seeded accounts — commit users.example.json only
+backend/users.json

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # Comma-separated. Use * for same-origin + local preview, or list explicit origins.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:4173,http://localhost:4173"
     users_file: str = "users.json"
+    # Optional raw JSON array of users (Fly secret). Wins over users_file when set.
+    users_json: str = ""
     # Empty = auto-detect ../frontend/dist relative to backend/
     static_dir: str = ""
 

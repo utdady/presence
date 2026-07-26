@@ -17,6 +17,10 @@ python -m venv .venv
 # macOS/Linux:
 # source .venv/bin/activate
 pip install -r requirements.txt
+# First time: create your real roster (gitignored)
+copy users.example.json users.json   # Windows
+# cp users.example.json users.json   # macOS/Linux
+# Then edit users.json — replace placeholder hashes (see "Add a user")
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -63,16 +67,20 @@ npm run preview -- --host 127.0.0.1 --port 4173
 ```bash
 fly apps create presence-YOURNAME   # skip if create already ran / name taken
 fly secrets set JWT_SECRET="paste-a-long-random-string-here"
+# Real roster is NOT in git. Push it as a secret (reads stdin):
+#   macOS/Linux:  fly secrets set USERS_JSON=- < backend/users.json
+#   PowerShell:   Get-Content -Raw backend/users.json | fly secrets set USERS_JSON=-
 fly deploy
 ```
 
 4. Open `https://presence-YOURNAME.fly.dev`, sign in, install as PWA on your phone.
 
-Generate strong, unique passwords and store only their Argon2id hashes in
-`backend/users.json` before deploying. Keep plaintext credentials in a
-gitignored local file and share them out of band. The free tier may stop
-machines when idle — first load can be slow; presence requires the machine
-running.
+`backend/users.json` is gitignored. Only `backend/users.example.json` is
+committed (placeholder hub/alice/dummy accounts). Keep plaintext passwords in
+`credentials.local.json` (also gitignored) and share them out of band. After
+changing users, update the Fly secret and redeploy (or at least reset the
+secret — the app reloads users on boot). The free tier may stop machines when
+idle — first load can be slow; presence requires the machine running.
 
 ### Test dummy bot
 
@@ -120,7 +128,14 @@ python hash_password.py "their-password"
 }
 ```
 
-3. Restart the backend (or rely on process restart). Hand the username/password to them out of band.
+3. Restart the backend (or redeploy). For Fly, refresh the secret first:
+
+```powershell
+Get-Content -Raw backend/users.json | fly secrets set USERS_JSON=-
+fly deploy
+```
+
+Hand the username/password to them out of band.
 
 Keep exactly one user with `"role": "hub"`.
 
@@ -129,7 +144,7 @@ Keep exactly one user with `"role": "hub"`.
 - **Auth:** Argon2id password verify → JWT → WebSocket `?token=`
 - **Graph:** hub ↔ spoke only; spoke ↔ spoke rejected server-side
 - **Crypto (client):** X25519 identity keys in IndexedDB, session key via ECDH + BLAKE2b, ChaCha20-Poly1305 AEAD for msg/typing/reaction payloads
-- **State:** connections and public keys in RAM only; `users.json` is the only durable store
+- **State:** connections and public keys in RAM only; the user roster is loaded from `USERS_JSON` (preferred) or local `users.json` at boot — never from the public git tree
 
 ## Verification checklist
 

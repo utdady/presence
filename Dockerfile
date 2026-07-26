@@ -22,11 +22,12 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
-COPY backend/users.json ./users.json
+# Placeholder only — production should set Fly secret USERS_JSON
+COPY backend/users.example.json ./users.json
 COPY backend/hash_password.py ./hash_password.py
 COPY --from=frontend /src/frontend/dist ./frontend/dist
 
 EXPOSE 8000
 
-# JWT_SECRET must be set at deploy time (fly secrets set)
+# JWT_SECRET and USERS_JSON must be set at deploy time (fly secrets set)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

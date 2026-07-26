@@ -1,0 +1,26 @@
+[
+  {
+    "id": "hub",
+    "username": "hub",
+    "display_name": "Hub",
+    "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$ufxgW1XAbrSrsqCNZxJ8NQ$PnGR2YV271Tl/ph1LvFyCnojY8cxjAc9+WuiqZloL+c",
+    "role": "hub",
+    "avatar_color": "#6B7C8A"
+  },
+  {
+    "id": "alice",
+    "username": "alice",
+    "display_name": "Alice",
+    "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$p0Bnjhjd0rFo3zXgbhqWqQ$KgPXM5sYxfnhnTkehdyZsc//1E+WgcN2X/qP2jI4MYw",
+    "role": "spoke",
+    "avatar_color": "#7A8B6F"
+  },
+  {
+    "id": "dummy",
+    "username": "dummy",
+    "display_name": "Dummy",
+    "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$+Iq4FR0uA64qqlW8SDw5sA$uNXKsTcjlj83Ml+NZeR2/bDKlyoQu5JV1dWP+ljTZR0",
+    "role": "spoke",
+    "avatar_color": "#5C6B7A"
+  }
+]

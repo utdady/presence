@@ -17,8 +17,19 @@ _hub_id: str | None = None
 
 def load_users(path: Path | None = None) -> None:
     global _hub_id
-    users_path = path or settings.users_path()
-    raw = json.loads(users_path.read_text(encoding="utf-8"))
+    if settings.users_json.strip():
+        raw = json.loads(settings.users_json)
+    else:
+        users_path = path or settings.users_path()
+        if not users_path.is_file():
+            example = users_path.with_name("users.example.json")
+            raise FileNotFoundError(
+                f"Missing {users_path.name}. Copy {example.name} to "
+                f"{users_path.name} for local use, or set USERS_JSON."
+            )
+        raw = json.loads(users_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise RuntimeError("Users data must be a JSON array")
     _users_by_id.clear()
     _users_by_username.clear()
     hub_count = 0
