@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { AppShell } from './pages/AppShell'
+import { ThemeProvider } from './theme'
 import './index.css'
 
 function Root() {
@@ -19,8 +20,10 @@ function Root() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Root />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Root />
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

@@ -3,6 +3,7 @@ import { useAuth } from '../auth'
 import { fileToAvatarJpeg } from '../avatarImage'
 import { Avatar } from '../components/Avatar'
 import { ChatView } from '../components/ChatView'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { usePresenceSession } from '../usePresenceSession'
 
 export function AppShell() {
@@ -154,6 +155,7 @@ function PresenceInner({
               Remove photo
             </button>
           )}
+          <ThemeToggle />
           <button type="button" className="ghost-btn" onClick={logout}>
             Sign out
           </button>

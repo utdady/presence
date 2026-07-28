@@ -1,28 +1,31 @@
 :root {
-  color-scheme: dark;
-  --bg: #0e1114;
-  --bg-elevated: #151a1f;
-  --fg: #e8ecef;
-  --fg-muted: #8b949e;
-  --border: #242b33;
-  --accent: #c4ccd4;
-  --danger: #a67c7c;
   --font: 'DM Sans', system-ui, sans-serif;
   --radius: 0;
   --motion: 150ms ease;
+  --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg: #f4f5f6;
-    --bg-elevated: #ffffff;
-    --fg: #1a1f24;
-    --fg-muted: #6b7380;
-    --border: #d8dde3;
-    --accent: #2a323a;
-    --danger: #8a5555;
-  }
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f5f6;
+  --bg-elevated: #ffffff;
+  --fg: #1a1f24;
+  --fg-muted: #6b7380;
+  --border: #d8dde3;
+  --accent: #2a323a;
+  --danger: #8a5555;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0c0f12;
+  --bg-elevated: #161b21;
+  --fg: #e8ecef;
+  --fg-muted: #8b949e;
+  --border: #2a323a;
+  --accent: #c4ccd4;
+  --danger: #a67c7c;
 }
 
 *,
@@ -44,6 +47,32 @@ body {
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
 }
+
+[data-theme='dark'] body {
+  background-color: var(--bg);
+  background-image:
+    var(--grain),
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(90, 110, 130, 0.16), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 100%, rgba(40, 50, 60, 0.4), transparent 50%),
+    linear-gradient(180deg, #0c0f12 0%, #10151a 52%, #0a0d10 100%);
+  background-size: 160px 160px, auto, auto, auto;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat;
+  background-blend-mode: overlay, normal, normal, normal;
+  background-attachment: fixed;
+}
+
+[data-theme='dark'] .app-frame,
+[data-theme='dark'] .login-page {
+  background: transparent;
+}
+
+.login-theme {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+}
+
 
 button,
 input {
@@ -93,6 +122,7 @@ input:focus {
 }
 
 .login-page {
+  position: relative;
   min-height: 100%;
   display: grid;
   place-items: center;
@@ -128,6 +158,34 @@ input:focus {
   gap: 0.35rem;
   font-size: 0.85rem;
   color: var(--fg-muted);
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 2.75rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+}
+
+.password-toggle:hover,
+.password-toggle[aria-pressed='true'] {
+  color: var(--fg);
 }
 
 .form-error {
