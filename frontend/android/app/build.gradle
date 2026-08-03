@@ -8,8 +8,9 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes -PpresenceVersionCode / -PpresenceVersionName (GitHub run_number).
-        versionCode (findProperty("presenceVersionCode") ?: "1") as int
-        versionName (findProperty("presenceVersionName") ?: "1.0") as String
+        // Parens required: otherwise Groovy parses `versionCode (x) as int` as casting null.
+        versionCode ((findProperty("presenceVersionCode") ?: "1") as int)
+        versionName ((findProperty("presenceVersionName") ?: "1.0") as String)
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
