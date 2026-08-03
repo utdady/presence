@@ -31,17 +31,14 @@ def load_users(path: Path | None = None) -> None:
     users_path = path or settings.users_path()
     raw: list | None = None
 
-    # Prefer on-disk roster when present so invite signups persist across restarts.
-    if users_path.is_file():
-        loaded = json.loads(users_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, list):
-            raw = loaded
-    if raw is None and settings.users_json.strip():
+    # USERS_JSON (Fly secret) wins when set — matches config docstring.
+    # Otherwise load the on-disk roster (local dev / invite signups).
+    if settings.users_json.strip():
         loaded = json.loads(settings.users_json)
         if not isinstance(loaded, list):
             raise RuntimeError("USERS_JSON must be a JSON array")
         raw = loaded
-        # Seed file when possible so later saves have a home.
+        # Seed file when possible so invite saves have a home.
         try:
             users_path.parent.mkdir(parents=True, exist_ok=True)
             users_path.write_text(
@@ -50,6 +47,10 @@ def load_users(path: Path | None = None) -> None:
             )
         except OSError:
             pass
+    elif users_path.is_file():
+        loaded = json.loads(users_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, list):
+            raw = loaded
     if raw is None:
         example = users_path.with_name("users.example.json")
         raise FileNotFoundError(
