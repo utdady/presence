@@ -105,28 +105,6 @@ function PresenceInner({
     }
   }
 
-  if (session.superseded) {
-    return (
-      <div className="app-frame">
-        <div className="empty-state centered">
-          <BrandMark size={28} />
-          <p className="empty-state-lead">Signed in somewhere else</p>
-          <p className="empty-state-sub">
-            This account is open in another tab or device. Presence allows one
-            at a time.
-          </p>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => window.location.reload()}
-          >
-            Use it here
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   if (membersMode && token && user.role === 'hub') {
     return (
       <div className="app-frame app-frame--split">

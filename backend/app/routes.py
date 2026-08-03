@@ -254,8 +254,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
         return
 
     await manager.connect(user.id, websocket)
-    await manager.send_presence_snapshot(user.id)
-    await manager.notify_presence_change(user.id, online=True)
+    # Snapshot only this device — other devices already have live state.
+    first_device = manager.connection_count(user.id) == 1
+    await manager.send_presence_snapshot(user.id, websocket)
+    if first_device:
+        await manager.notify_presence_change(user.id, online=True)
 
     try:
         while True:
@@ -263,8 +266,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await manager.send_json(
-                    user.id,
+                await manager.send_to(
+                    websocket,
                     {"type": "error", "payload": "invalid_json"},
                 )
                 continue
@@ -282,8 +285,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
 
             if msg_type in ("msg", "typing", "reaction", "snap", "voice", "profile"):
                 if not isinstance(to_id, str):
-                    await manager.send_json(
-                        user.id,
+                    await manager.send_to(
+                        websocket,
                         {"type": "error", "payload": "missing_to"},
                     )
                     continue
@@ -305,14 +308,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
                         },
                     )
                 elif result == "forbidden":
-                    await manager.send_json(
-                        user.id,
+                    await manager.send_to(
+                        websocket,
                         {"type": "error", "payload": "forbidden"},
                     )
                 continue
 
-            await manager.send_json(
-                user.id,
+            await manager.send_to(
+                websocket,
                 {"type": "error", "payload": "unknown_type"},
             )
     except WebSocketDisconnect:

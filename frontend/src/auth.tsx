@@ -15,7 +15,11 @@ import {
   setToken,
   signup as apiSignup,
 } from './api'
-import { getOrCreateIdentityKeypair, initCrypto } from './crypto'
+import {
+  deriveAndStoreIdentityKeypair,
+  getOrCreateIdentityKeypair,
+  initCrypto,
+} from './crypto'
 import type { UserPublic } from './types'
 
 interface AuthState {
@@ -47,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     ;(async () => {
       await initCrypto()
+      // Session restore: use last derived/stored identity (no password on hand).
       const keys = await getOrCreateIdentityKeypair()
       if (cancelled) return
       setPublicKey(keys.publicKey)
@@ -73,6 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await apiLogin(username, password)
+    const keys = await deriveAndStoreIdentityKeypair(username, password)
+    setPublicKey(keys.publicKey)
+    setPrivateKey(keys.privateKey)
     setToken(res.access_token)
     setTokenState(res.access_token)
     setUser(res.user)
@@ -86,6 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string
     }) => {
       const res = await apiSignup(input)
+      const keys = await deriveAndStoreIdentityKeypair(
+        input.username,
+        input.password,
+      )
+      setPublicKey(keys.publicKey)
+      setPrivateKey(keys.privateKey)
       setToken(res.access_token)
       setTokenState(res.access_token)
       setUser(res.user)

@@ -64,6 +64,38 @@ export async function getOrCreateIdentityKeypair(): Promise<{
   return { publicKey: record.publicKey, privateKey: record.privateKey }
 }
 
+/**
+ * Derive a stable identity keypair from username+password so every device
+ * that signs in as the same account shares one E2E identity.
+ */
+export async function deriveAndStoreIdentityKeypair(
+  username: string,
+  password: string,
+): Promise<{ publicKey: string; privateKey: string }> {
+  assertReady()
+  const uname = username.trim().toLowerCase()
+  const salt = sodium.crypto_generichash(
+    sodium.crypto_pwhash_SALTBYTES,
+    sodium.from_string(`presence-id-v1:${uname}`),
+  )
+  const seed = sodium.crypto_pwhash(
+    sodium.crypto_box_SEEDBYTES,
+    password,
+    salt,
+    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+  )
+  const kp = sodium.crypto_box_seed_keypair(seed)
+  const record = {
+    id: 'self' as const,
+    publicKey: b64(kp.publicKey),
+    privateKey: b64(kp.privateKey),
+  }
+  const db = await getDb()
+  await db.put('identity', record, 'self')
+  return { publicKey: record.publicKey, privateKey: record.privateKey }
+}
+
 /** X25519 shared secret via crypto_box_beforenm, then BLAKE2b-256 (HKDF-like). */
 export function deriveSessionKey(
   myPrivateKeyB64: string,

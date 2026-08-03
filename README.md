@@ -184,7 +184,12 @@ Keep exactly one user with `"role": "hub"`.
 
 - **Auth:** Argon2id password verify → JWT → WebSocket `?token=`
 - **Graph:** hub ↔ spoke only; spoke ↔ spoke rejected server-side
-- **Crypto (client):** X25519 identity keys in IndexedDB, session key via ECDH + BLAKE2b, ChaCha20-Poly1305 AEAD for msg/typing/reaction payloads
+- **Crypto (client):** X25519 identity keys derived from username+password (so
+  phone and browser share one identity), session key via ECDH + BLAKE2b,
+  ChaCha20-Poly1305 AEAD for msg/typing/reaction payloads
+- **Multi-device:** several WebSockets per account stay online together; relays
+  fan out to every device and echo outbound messages to your other devices.
+  You are offline only when the last device disconnects.
 - **State:** connections and public keys in RAM only; the user roster is loaded from `USERS_JSON` (preferred) or local `users.json` at boot — never from the public git tree
 
 ## Verification checklist

@@ -10,30 +10,34 @@ from app import users as user_store
 
 class ConnectionManager:
     def __init__(self) -> None:
-        self.connections: dict[str, WebSocket] = {}
+        # Multiple devices per account may be online at once.
+        self.connections: dict[str, set[WebSocket]] = {}
         self.public_keys: dict[str, str] = {}
 
     def online_ids(self) -> set[str]:
-        return set(self.connections.keys())
+        return {uid for uid, socks in self.connections.items() if socks}
 
     def is_online(self, user_id: str) -> bool:
-        return user_id in self.connections
+        return bool(self.connections.get(user_id))
+
+    def connection_count(self, user_id: str) -> int:
+        return len(self.connections.get(user_id, ()))
 
     async def connect(self, user_id: str, websocket: WebSocket) -> None:
         await websocket.accept()
-        old = self.connections.get(user_id)
-        if old is not None and old is not websocket:
-            try:
-                await old.close(code=4000, reason="Replaced by new connection")
-            except Exception:
-                pass
-        self.connections[user_id] = websocket
+        bucket = self.connections.setdefault(user_id, set())
+        bucket.add(websocket)
 
     def disconnect(self, user_id: str, websocket: WebSocket | None = None) -> bool:
-        current = self.connections.get(user_id)
-        if current is None:
+        """Remove a socket. Returns True if the user is now fully offline."""
+        bucket = self.connections.get(user_id)
+        if not bucket:
             return False
-        if websocket is not None and current is not websocket:
+        if websocket is not None:
+            bucket.discard(websocket)
+        else:
+            bucket.clear()
+        if bucket:
             return False
         self.connections.pop(user_id, None)
         self.public_keys.pop(user_id, None)
@@ -45,15 +49,32 @@ class ConnectionManager:
     def get_pubkey(self, user_id: str) -> str | None:
         return self.public_keys.get(user_id)
 
-    async def send_json(self, user_id: str, message: dict[str, Any]) -> bool:
-        ws = self.connections.get(user_id)
-        if ws is None:
-            return False
+    async def send_to(self, websocket: WebSocket, message: dict[str, Any]) -> bool:
         try:
-            await ws.send_text(json.dumps(message))
+            await websocket.send_text(json.dumps(message))
             return True
         except Exception:
             return False
+
+    async def send_json(self, user_id: str, message: dict[str, Any]) -> bool:
+        """Fan-out to every live device for this account. Returns True if any send ok."""
+        bucket = self.connections.get(user_id)
+        if not bucket:
+            return False
+        payload = json.dumps(message)
+        dead: list[WebSocket] = []
+        any_ok = False
+        for ws in list(bucket):
+            try:
+                await ws.send_text(payload)
+                any_ok = True
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            bucket.discard(ws)
+        if not bucket:
+            self.connections.pop(user_id, None)
+        return any_ok
 
     async def notify_presence_change(self, changed_user_id: str, online: bool) -> None:
         changed = user_store.get_user(changed_user_id)
@@ -83,11 +104,22 @@ class ConnectionManager:
                 },
             )
 
-    async def send_presence_snapshot(self, viewer_id: str) -> None:
+    async def send_presence_snapshot(
+        self,
+        viewer_id: str,
+        websocket: WebSocket | None = None,
+    ) -> None:
+        """Send peer presence to one device (preferred) or all devices."""
+
+        async def _emit(message: dict[str, Any]) -> None:
+            if websocket is not None:
+                await self.send_to(websocket, message)
+            else:
+                await self.send_json(viewer_id, message)
+
         peers = user_store.visible_peers(viewer_id)
         for peer in peers:
-            await self.send_json(
-                viewer_id,
+            await _emit(
                 {
                     "type": "presence",
                     "from": peer.id,
@@ -104,8 +136,7 @@ class ConnectionManager:
             )
             pubkey = self.get_pubkey(peer.id)
             if pubkey and self.is_online(peer.id):
-                await self.send_json(
-                    viewer_id,
+                await _emit(
                     {
                         "type": "pubkey",
                         "from": peer.id,
@@ -152,7 +183,12 @@ class ConnectionManager:
         if msg_id:
             message["msg_id"] = msg_id
         sent = await self.send_json(to_id, message)
-        return "ok" if sent else "undelivered"
+        if not sent:
+            return "undelivered"
+        # Mirror to the sender's other devices so phone↔browser stay in sync.
+        if msg_type in ("msg", "snap", "voice", "reaction", "profile"):
+            await self.send_json(from_id, message)
+        return "ok"
 
 
 manager = ConnectionManager()

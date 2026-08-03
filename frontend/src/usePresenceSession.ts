@@ -41,16 +41,15 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   const [unread, setUnread] = useState<Record<string, boolean>>({})
   const [avatars, setAvatars] = useState<AvatarMap>({})
   const [connected, setConnected] = useState(false)
-  const [superseded, setSuperseded] = useState(false)
   const [leavingPeer, setLeavingPeer] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const privateKeyRef = useRef(privateKey)
+  const myIdRef = useRef(myId)
   const sessionKeysRef = useRef(sessionKeys)
   const peerKeysRef = useRef(peerKeys)
   const activePeerIdRef = useRef(activePeerId)
   const avatarsRef = useRef(avatars)
-  const myIdRef = useRef(myId)
   privateKeyRef.current = privateKey
   sessionKeysRef.current = sessionKeys
   peerKeysRef.current = peerKeys
@@ -157,17 +156,10 @@ export function usePresenceSession(opts: UsePresenceOptions) {
         ws.send(JSON.stringify({ type: 'pubkey', payload: publicKey }))
       }
 
-      // A superseded socket must not clear state owned by the current one
-      ws.onclose = (ev) => {
+      ws.onclose = () => {
         if (wsRef.current !== ws) return
         wsRef.current = null
         setConnected(false)
-        // 4000 = server handed this account to another connection. Retrying
-        // would kick that one back and ping-pong forever.
-        if (ev.code === 4000) {
-          setSuperseded(true)
-          return
-        }
         if (!closed) {
           retryTimer = window.setTimeout(connect, 1500)
         }
@@ -273,7 +265,10 @@ export function usePresenceSession(opts: UsePresenceOptions) {
           data.type === 'voice' ||
           data.type === 'profile'
         ) {
-          const peerId = data.from
+          // Own-device echo: same ciphertext mirrored so phone↔browser stay in sync.
+          const isEcho = data.from === myIdRef.current
+          const peerId = isEcho ? data.to : data.from
+          if (!peerId) return
           if (!data.payload) return
           let key = sessionKeysRef.current[peerId]
           if (!key) {
@@ -288,6 +283,10 @@ export function usePresenceSession(opts: UsePresenceOptions) {
           const plain = decryptPayload(key, data.payload)
           if (!plain) return
 
+          if (isEcho && (plain.kind === 'typing' || plain.kind === 'profile')) {
+            return
+          }
+
           if (plain.kind === 'msg') {
             setMessages((prev) => {
               const list = prev[peerId] ?? []
@@ -298,7 +297,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                   ...list,
                   {
                     id: plain.msg_id,
-                    from: peerId,
+                    from: isEcho ? myIdRef.current : peerId,
                     text: plain.text,
                     status: 'sent',
                     reactions: {},
@@ -307,7 +306,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                 ],
               }
             })
-            if (activePeerIdRef.current !== peerId) {
+            if (!isEcho && activePeerIdRef.current !== peerId) {
               setUnread((prev) =>
                 prev[peerId] ? prev : { ...prev, [peerId]: true },
               )
@@ -322,7 +321,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                   ...list,
                   {
                     id: plain.msg_id,
-                    from: peerId,
+                    from: isEcho ? myIdRef.current : peerId,
                     text: '',
                     status: 'sent',
                     reactions: {},
@@ -334,7 +333,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                 ],
               }
             })
-            if (activePeerIdRef.current !== peerId) {
+            if (!isEcho && activePeerIdRef.current !== peerId) {
               setUnread((prev) =>
                 prev[peerId] ? prev : { ...prev, [peerId]: true },
               )
@@ -349,7 +348,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                   ...list,
                   {
                     id: plain.msg_id,
-                    from: peerId,
+                    from: isEcho ? myIdRef.current : peerId,
                     text: '',
                     status: 'sent',
                     reactions: {},
@@ -361,7 +360,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                 ],
               }
             })
-            if (activePeerIdRef.current !== peerId) {
+            if (!isEcho && activePeerIdRef.current !== peerId) {
               setUnread((prev) =>
                 prev[peerId] ? prev : { ...prev, [peerId]: true },
               )
@@ -369,6 +368,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
           } else if (plain.kind === 'typing') {
             setTyping((prev) => ({ ...prev, [peerId]: plain.active }))
           } else if (plain.kind === 'reaction') {
+            const reactorId = isEcho ? myIdRef.current : peerId
             setMessages((prev) => {
               const list = prev[peerId] ?? []
               return {
@@ -379,7 +379,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                         ...m,
                         reactions: {
                           ...m.reactions,
-                          [peerId]: plain.emoji,
+                          [reactorId]: plain.emoji,
                         },
                       }
                     : m,
@@ -625,7 +625,6 @@ export function usePresenceSession(opts: UsePresenceOptions) {
 
   return {
     connected,
-    superseded,
     peers: peerList,
     peersById: peers,
     sessionKeys,
