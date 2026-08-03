@@ -12,3 +12,19 @@ credentials.local.json
 
 # Real seeded accounts — commit users.example.json only
 backend/users.json
+
+# Local Android build toolchain (JDK/SDK)
+tools/
+frontend/android/local.properties
+frontend/android/app/build/
+releases/*.apk
+backend/invites.json
+
+frontend/plugins/**/android/build/
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/capacitor-cordova-android-plugins/
+frontend/android/local.properties
+frontend/plugins/**/node_modules/
+

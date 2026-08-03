@@ -59,3 +59,11 @@ async def require_user(
             detail="Not authenticated",
         )
     return user_from_token(credentials.credentials)
+
+async def require_hub(user: UserRecord = Depends(require_user)) -> UserRecord:
+    if user.role != "hub":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the hub can manage invites",
+        )
+    return user

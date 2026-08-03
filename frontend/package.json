@@ -7,15 +7,23 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:android": "npm run build && npx cap sync android && npx cap open android",
+    "cap:copy": "npx cap copy",
+    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
     "idb": "^8.0.3",
     "libsodium-wrappers": "^0.8.4",
+    "presence-nearby": "file:plugins/presence-nearby",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",

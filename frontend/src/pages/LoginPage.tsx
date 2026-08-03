@@ -54,7 +54,7 @@ function EyeIcon({ open }: { open: boolean }) {
   )
 }
 
-export function LoginPage() {
+export function LoginPage({ onJoin }: { onJoin?: () => void }) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -121,6 +121,11 @@ export function LoginPage() {
           <button type="submit" disabled={busy}>
             {busy ? 'Signing in…' : 'Continue'}
           </button>
+          {onJoin && (
+            <button type="button" className="ghost-btn" onClick={onJoin}>
+              Have an invite? Join
+            </button>
+          )}
         </form>
       </div>
     </div>

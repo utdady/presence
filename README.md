@@ -2,8 +2,8 @@
 
 Privacy-first, presence-only messaging for a closed hub-and-spoke circle.
 Messages exist only while both people are online. The server relays ciphertext
-and presence — never plaintext. There is no registration: you seed accounts and
-hand credentials to friends. Spokes can only talk to the hub.
+and presence — never plaintext. Join is invite-only: the hub creates invite links; members cannot invite others.
+After joining, spokes can only message the hub — never each other.
 
 ## Quick start
 
@@ -106,6 +106,19 @@ python main.py
 
 Identity key is stored at `bot/identity_key.json` (gitignored). Dev fixture only — do not use for real friends.
 
+## Invites (hub only)
+
+1. Sign in as the **hub** account.
+2. Open **Invites** → **Create invite link** (copied to clipboard).
+3. Send the link out of band (`https://your-host/?invite=…`).
+4. Friend opens the link, sets username/password, joins.
+5. They only see you in Friends; they cannot discover or message other members.
+
+Invites are stored in `backend/invites.json` (gitignored). New accounts are
+appended to `backend/users.json`. On Fly, the users file must be writable
+(volume or local disk) — a read-only `USERS_JSON` secret alone will not persist
+signups across restarts.
+
 ## Add a user
 
 1. Hash a password:
@@ -153,3 +166,85 @@ Keep exactly one user with `"role": "hub"`.
 - Send while peer offline → ack `undelivered`, no queue
 - Peer disconnect clears the live thread after a short transition
 - Run `python bot/main.py`, chat with Dummy from hub, then Ctrl+C the bot to see offline transition
+
+
+## Nearby voice calls (Android)
+
+Offline 1:1 **voice calls** between two Presence devices that are physically
+nearby. Discovery uses Bluetooth (Google Nearby Connections); call audio uses
+local Wi‑Fi via WebRTC. **No Presence server / internet is required** for the
+call path. Cellular can stay off; keep **Bluetooth and Wi‑Fi** enabled.
+
+On **Android**, Nearby uses Bluetooth discovery. On **web / PC / iPhone browser**, use **LAN Nearby**: create or join a 6-character room code (best on the same Wi‑Fi). Signaling goes through Presence; call audio is peer-to-peer.
+
+### Build a sideloadable APK (no Play Store)
+
+From a machine that already has the local toolchain under `tools/` (JDK + Android SDK), or after following the one-time setup below:
+
+```bash
+cd frontend
+npm run apk:debug
+```
+
+Output: `releases/presence-debug.apk` (~5 MB debug build).
+
+**Install on a phone**
+
+1. Copy `presence-debug.apk` to the phone (USB, Drive, AirDrop-from-PC, etc.).
+2. Open the file → Allow “Install unknown apps” for that source if prompted.
+3. Install → open **Presence**.
+
+Or with USB debugging:
+
+```bash
+adb install -r releases/presence-debug.apk
+```
+
+Rebuild after UI/native changes with the same `npm run apk:debug` command.
+
+### Build the Android app (Android Studio)
+
+Requirements: JDK 21+, Android SDK (or Android Studio). This repo can use a portable toolchain under `tools/` (gitignored). An Android device/emulator with Google
+Play services (Nearby Connections).
+
+```bash
+cd frontend
+npm install
+npm run cap:android
+```
+
+Or step by step:
+
+```bash
+cd frontend
+npm run build
+npx cap sync android
+npx cap open android
+```
+
+In Android Studio, run on two physical devices (emulators often lack reliable
+Nearby/Bluetooth).
+
+Local plugin: `frontend/plugins/presence-nearby` (Capacitor `PresenceNearby`).
+
+### In-app flow
+
+1. Sign in on both devices (online once is enough to create the session; Nearby
+   itself does not need the hub to stay up).
+2. Open **Nearby** from the friends header.
+3. Tap **Find nearby** on both devices; grant Bluetooth / location / mic if asked.
+4. Tap the other device, wait for key exchange (fingerprint shown).
+5. **Call** / **Accept**. Use Mute / End as needed.
+
+### Verification checklist
+
+- [ ] Two Android builds discover each other with airplane mode on and Wi‑Fi on
+- [ ] Outgoing and incoming call both connect with duplex audio
+- [ ] Mute disables local mic; End returns both sides to ready/scanning
+- [ ] Decline rejects an incoming call
+- [ ] Online hub chat still works in the same app when the network is back
+- [ ] Web/PWA Nearby screen shows the Android-app CTA (does not silently fail)
+
+### Not in v1
+
+Nearby texts, photos, voice notes, video calls, iOS Multipeer, and mesh hops.

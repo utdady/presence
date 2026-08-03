@@ -4,12 +4,34 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
+from app import invites as invite_store
+from app import lan_rooms
 from app import users as user_store
-from app.auth import create_access_token, require_user, user_from_token
-from app.models import LoginRequest, TokenResponse, UserPublic, UserRecord
+from app.auth import create_access_token, require_hub, require_user, user_from_token
+from app.models import (
+    InviteCreateRequest,
+    InvitePublic,
+    LoginRequest,
+    SignupRequest,
+    TokenResponse,
+    UserPublic,
+    UserRecord,
+)
 from app.ws import manager
 
 router = APIRouter()
+
+
+def _invite_public(inv) -> InvitePublic:
+    return InvitePublic(
+        code=inv.code,
+        label=inv.label,
+        max_uses=inv.max_uses,
+        uses=inv.uses,
+        created_at=inv.created_at,
+        revoked=inv.revoked,
+        invite_path=f"/?invite={inv.code}",
+    )
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -27,6 +49,65 @@ def login(body: LoginRequest) -> TokenResponse:
     )
 
 
+@router.post("/auth/signup", response_model=TokenResponse)
+def signup(body: SignupRequest) -> TokenResponse:
+    inv = invite_store.get_invite(body.invite_code)
+    if not inv or not invite_store.invite_is_redeemable(inv):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invite invalid or already used",
+        )
+    try:
+        user = user_store.create_spoke(
+            username=body.username,
+            display_name=body.display_name,
+            password=body.password,
+        )
+        invite_store.consume_invite(body.invite_code)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save new account (is the users file writable?)",
+        ) from exc
+
+    token = create_access_token(user)
+    return TokenResponse(
+        access_token=token,
+        user=user_store.to_public(user, online=False),
+    )
+
+
+@router.get("/invites", response_model=list[InvitePublic])
+def list_invites(user: UserRecord = Depends(require_hub)) -> list[InvitePublic]:
+    return [_invite_public(i) for i in invite_store.list_invites()]
+
+
+@router.post("/invites", response_model=InvitePublic)
+def create_invite(
+    body: InviteCreateRequest,
+    user: UserRecord = Depends(require_hub),
+) -> InvitePublic:
+    inv = invite_store.create_invite(
+        created_by=user.id,
+        label=body.label,
+        max_uses=body.max_uses,
+    )
+    return _invite_public(inv)
+
+
+@router.post("/invites/{code}/revoke", response_model=InvitePublic)
+def revoke_invite(code: str, user: UserRecord = Depends(require_hub)) -> InvitePublic:
+    inv = invite_store.revoke_invite(code)
+    if not inv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
+    return _invite_public(inv)
+
+
 @router.get("/me", response_model=UserPublic)
 def me(user: UserRecord = Depends(require_user)) -> UserPublic:
     return user_store.to_public(user, online=manager.is_online(user.id))
@@ -39,7 +120,105 @@ def peers(user: UserRecord = Depends(require_user)) -> list[UserPublic]:
         for p in user_store.visible_peers(user.id)
     ]
 
+@router.post("/nearby/lan/rooms")
+def create_lan_room(user: UserRecord = Depends(require_user)) -> dict[str, str]:
+    room = lan_rooms.create_room(user.id)
+    return {"code": room.code}
 
+
+@router.post("/nearby/lan/rooms/{code}/join")
+def join_lan_room(code: str, user: UserRecord = Depends(require_user)) -> dict[str, str]:
+    try:
+        room = lan_rooms.join_room(code, user.id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return {"code": room.code}
+
+
+@router.websocket("/nearby/lan/ws")
+async def lan_nearby_ws(
+    websocket: WebSocket,
+    token: str | None = None,
+    code: str | None = None,
+) -> None:
+    if not token or not code:
+        await websocket.close(code=4401, reason="Missing token or code")
+        return
+    try:
+        user = user_from_token(token)
+    except HTTPException:
+        await websocket.close(code=4401, reason="Invalid token")
+        return
+
+    room = lan_rooms.get_room(code)
+    if room is None:
+        await websocket.close(code=4404, reason="Room not found")
+        return
+    if user.id not in {room.host_user_id, room.guest_user_id}:
+        await websocket.close(code=4403, reason="Not in room")
+        return
+
+    await websocket.accept()
+    try:
+        role = lan_rooms.attach_ws(room, user.id, websocket)
+    except ValueError:
+        await websocket.close(code=4403, reason="Not in room")
+        return
+
+    await websocket.send_text(
+        json.dumps(
+            {
+                "type": "room",
+                "code": room.code,
+                "role": role,
+                "userId": user.id,
+                "displayName": user.display_name,
+            }
+        )
+    )
+
+    peer = lan_rooms.peer_ws(room, user.id)
+    if peer is not None:
+        notice = json.dumps(
+            {
+                "type": "peer-joined",
+                "userId": user.id,
+                "displayName": user.display_name,
+            }
+        )
+        try:
+            await peer.send_text(notice)
+        except Exception:
+            pass
+        await websocket.send_text(
+            json.dumps({"type": "peer-ready"})
+        )
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            other = lan_rooms.peer_ws(room, user.id)
+            if other is None:
+                continue
+            try:
+                await other.send_text(raw)
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        lan_rooms.detach_ws(room, user.id, websocket)
+        other = lan_rooms.peer_ws(room, user.id)
+        if other is not None:
+            try:
+                await other.send_text(
+                    json.dumps({"type": "peer-left", "userId": user.id})
+                )
+            except Exception:
+                pass
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> None:
     if not token:

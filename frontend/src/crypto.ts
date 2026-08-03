@@ -127,3 +127,57 @@ export function newMsgId(): string {
   assertReady()
   return b64(sodium.randombytes_buf(12))
 }
+
+
+export function encryptJson(sessionKey: Uint8Array, value: unknown): string {
+  assertReady()
+  const nonce = sodium.randombytes_buf(
+    sodium.crypto_aead_chacha20poly1305_ietf_NPUBBYTES,
+  )
+  const message = sodium.from_string(JSON.stringify(value))
+  const cipher = sodium.crypto_aead_chacha20poly1305_ietf_encrypt(
+    message,
+    null,
+    null,
+    nonce,
+    sessionKey,
+  )
+  const packed = new Uint8Array(nonce.length + cipher.length)
+  packed.set(nonce, 0)
+  packed.set(cipher, nonce.length)
+  return b64(packed)
+}
+
+export function decryptJson<T = unknown>(
+  sessionKey: Uint8Array,
+  payloadB64: string,
+): T | null {
+  assertReady()
+  try {
+    const packed = fromB64(payloadB64)
+    const nonceLen = sodium.crypto_aead_chacha20poly1305_ietf_NPUBBYTES
+    const nonce = packed.slice(0, nonceLen)
+    const cipher = packed.slice(nonceLen)
+    const message = sodium.crypto_aead_chacha20poly1305_ietf_decrypt(
+      null,
+      cipher,
+      null,
+      nonce,
+      sessionKey,
+    )
+    return JSON.parse(sodium.to_string(message)) as T
+  } catch {
+    return null
+  }
+}
+
+/** Short human-check fingerprint of a public key. */
+export function keyFingerprint(publicKeyB64: string): string {
+  assertReady()
+  const digest = sodium.crypto_generichash(
+    8,
+    fromB64(publicKeyB64),
+    sodium.from_string('presence-nearby-fp'),
+  )
+  return sodium.to_hex(digest).toUpperCase()
+}

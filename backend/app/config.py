@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Comma-separated. Use * for same-origin + local preview, or list explicit origins.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:4173,http://localhost:4173"
     users_file: str = "users.json"
+    invites_file: str = "invites.json"
     # Optional raw JSON array of users (Fly secret). Wins over users_file when set.
     users_json: str = ""
     # Empty = auto-detect ../frontend/dist relative to backend/
@@ -28,6 +29,12 @@ class Settings(BaseSettings):
 
     def users_path(self) -> Path:
         path = Path(self.users_file)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parent.parent / path
+        return path
+
+    def invites_path(self) -> Path:
+        path = Path(self.invites_file)
         if not path.is_absolute():
             path = Path(__file__).resolve().parent.parent / path
         return path

@@ -1,0 +1,21 @@
+import { Capacitor } from '@capacitor/core'
+import { PresenceNearby } from 'presence-nearby'
+
+export type NearbyTransport = 'native' | 'lan' | 'none'
+
+export async function nearbyTransport(): Promise<NearbyTransport> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await PresenceNearby.isAvailable()
+      if (res.available) return 'native'
+    } catch {
+      /* fall through to lan */
+    }
+  }
+  // Browser / PC / non-Android: LAN WebRTC via pairing code
+  return 'lan'
+}
+
+export async function nearbyCallsAvailable(): Promise<boolean> {
+  return (await nearbyTransport()) !== 'none'
+}

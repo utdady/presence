@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import invites as invite_store
 from app import users as user_store
 from app.config import settings
 from app.routes import router
@@ -16,6 +17,7 @@ from app.routes import router
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     user_store.load_users()
+    invite_store.load_invites()
     yield
 
 

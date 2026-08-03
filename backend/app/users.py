@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import secrets
 from pathlib import Path
 
 from argon2 import PasswordHasher
@@ -14,22 +16,47 @@ _users_by_id: dict[str, UserRecord] = {}
 _users_by_username: dict[str, UserRecord] = {}
 _hub_id: str | None = None
 
+_AVATAR_COLORS = (
+    "#6B7C8A",
+    "#7A8B6F",
+    "#5C6B7A",
+    "#8A7A6B",
+    "#6F7A8B",
+    "#7A6B8A",
+)
+
 
 def load_users(path: Path | None = None) -> None:
     global _hub_id
-    if settings.users_json.strip():
-        raw = json.loads(settings.users_json)
-    else:
-        users_path = path or settings.users_path()
-        if not users_path.is_file():
-            example = users_path.with_name("users.example.json")
-            raise FileNotFoundError(
-                f"Missing {users_path.name}. Copy {example.name} to "
-                f"{users_path.name} for local use, or set USERS_JSON."
+    users_path = path or settings.users_path()
+    raw: list | None = None
+
+    # Prefer on-disk roster when present so invite signups persist across restarts.
+    if users_path.is_file():
+        loaded = json.loads(users_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, list):
+            raw = loaded
+    if raw is None and settings.users_json.strip():
+        loaded = json.loads(settings.users_json)
+        if not isinstance(loaded, list):
+            raise RuntimeError("USERS_JSON must be a JSON array")
+        raw = loaded
+        # Seed file when possible so later saves have a home.
+        try:
+            users_path.parent.mkdir(parents=True, exist_ok=True)
+            users_path.write_text(
+                json.dumps(raw, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
             )
-        raw = json.loads(users_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise RuntimeError("Users data must be a JSON array")
+        except OSError:
+            pass
+    if raw is None:
+        example = users_path.with_name("users.example.json")
+        raise FileNotFoundError(
+            f"Missing {users_path.name}. Copy {example.name} to "
+            f"{users_path.name} for local use, or set USERS_JSON."
+        )
+
     _users_by_id.clear()
     _users_by_username.clear()
     hub_count = 0
@@ -42,6 +69,16 @@ def load_users(path: Path | None = None) -> None:
             _hub_id = user.id
     if hub_count != 1:
         raise RuntimeError(f"Expected exactly one hub user, found {hub_count}")
+
+
+def save_users() -> None:
+    path = settings.users_path()
+    payload = [u.model_dump() for u in all_users()]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def get_user(user_id: str) -> UserRecord | None:
@@ -102,3 +139,40 @@ def visible_peers(viewer_id: str) -> list[UserRecord]:
     if viewer.role == "hub":
         return [u for u in all_users() if u.role == "spoke"]
     return [u for u in all_users() if u.role == "hub"]
+
+
+def _slug_id(username: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "", username.lower())
+    if not base:
+        base = "user"
+    candidate = base
+    while candidate in _users_by_id:
+        candidate = f"{base}-{secrets.token_hex(2)}"
+    return candidate
+
+
+def create_spoke(
+    *,
+    username: str,
+    display_name: str,
+    password: str,
+) -> UserRecord:
+    uname = username.strip()
+    if not uname or get_user_by_username(uname):
+        raise ValueError("Username unavailable")
+    if not re.fullmatch(r"[A-Za-z0-9_\.]{2,32}", uname):
+        raise ValueError(
+            "Username must be 2–32 chars: letters, numbers, _ or ."
+        )
+    user = UserRecord(
+        id=_slug_id(uname),
+        username=uname,
+        display_name=display_name.strip() or uname,
+        password_hash=hash_password(password),
+        role="spoke",
+        avatar_color=secrets.choice(_AVATAR_COLORS),
+    )
+    _users_by_id[user.id] = user
+    _users_by_username[user.username.lower()] = user
+    save_users()
+    return user

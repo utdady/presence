@@ -13,6 +13,7 @@ import {
   getToken,
   login as apiLogin,
   setToken,
+  signup as apiSignup,
 } from './api'
 import { getOrCreateIdentityKeypair, initCrypto } from './crypto'
 import type { UserPublic } from './types'
@@ -24,6 +25,12 @@ interface AuthState {
   privateKey: string | null
   ready: boolean
   login: (username: string, password: string) => Promise<void>
+  signup: (input: {
+    invite_code: string
+    username: string
+    display_name: string
+    password: string
+  }) => Promise<void>
   logout: () => void
 }
 
@@ -71,6 +78,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user)
   }, [])
 
+  const signup = useCallback(
+    async (input: {
+      invite_code: string
+      username: string
+      display_name: string
+      password: string
+    }) => {
+      const res = await apiSignup(input)
+      setToken(res.access_token)
+      setTokenState(res.access_token)
+      setUser(res.user)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('invite')
+      window.history.replaceState({}, '', url.pathname + url.search)
+    },
+    [],
+  )
+
   const logout = useCallback(() => {
     clearToken()
     setTokenState(null)
@@ -85,9 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       privateKey,
       ready,
       login,
+      signup,
       logout,
     }),
-    [user, token, publicKey, privateKey, ready, login, logout],
+    [user, token, publicKey, privateKey, ready, login, signup, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

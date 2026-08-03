@@ -35,6 +35,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/auth': 'http://127.0.0.1:8000',
+      '/invites': 'http://127.0.0.1:8000',
+      '/nearby': { target: 'http://127.0.0.1:8000', ws: true },
       '/me': 'http://127.0.0.1:8000',
       '/peers': 'http://127.0.0.1:8000',
       '/health': 'http://127.0.0.1:8000',
@@ -48,6 +50,8 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/auth': 'http://127.0.0.1:8000',
+      '/invites': 'http://127.0.0.1:8000',
+      '/nearby': { target: 'http://127.0.0.1:8000', ws: true },
       '/me': 'http://127.0.0.1:8000',
       '/peers': 'http://127.0.0.1:8000',
       '/health': 'http://127.0.0.1:8000',

@@ -101,3 +101,13 @@ export type PlainPayload =
       version: string
       clear: true
     }
+
+export interface InvitePublic {
+  code: string
+  label: string
+  max_uses: number
+  uses: number
+  created_at: string
+  revoked: boolean
+  invite_path: string
+}
