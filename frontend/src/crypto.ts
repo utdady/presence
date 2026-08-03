@@ -77,6 +77,7 @@ export async function deriveAndStoreIdentityKeypair(
   const salt = sodium.crypto_generichash(
     sodium.crypto_pwhash_SALTBYTES,
     sodium.from_string(`presence-id-v1:${uname}`),
+    null,
   )
   const seed = sodium.crypto_pwhash(
     sodium.crypto_box_SEEDBYTES,
@@ -84,6 +85,7 @@ export async function deriveAndStoreIdentityKeypair(
     salt,
     sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
     sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_ALG_DEFAULT,
   )
   const kp = sodium.crypto_box_seed_keypair(seed)
   const record = {
