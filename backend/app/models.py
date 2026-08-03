@@ -15,6 +15,8 @@ class UserRecord(BaseModel):
     password_hash: str
     role: Role
     avatar_color: str
+    # Hub-only plaintext for invite tracking. Never returned on public user APIs.
+    password_plain: str | None = None
 
 
 class UserPublic(BaseModel):
@@ -24,6 +26,18 @@ class UserPublic(BaseModel):
     role: Role
     avatar_color: str
     online: bool = False
+
+
+class MemberPrivate(BaseModel):
+    """Hub-only roster row including recoverable plaintext password when known."""
+
+    id: str
+    username: str
+    display_name: str
+    role: Role
+    avatar_color: str
+    online: bool = False
+    password: str | None = None
 
 
 class LoginRequest(BaseModel):

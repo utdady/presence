@@ -111,3 +111,13 @@ export interface InvitePublic {
   revoked: boolean
   invite_path: string
 }
+
+export interface MemberPrivate {
+  id: string
+  username: string
+  display_name: string
+  role: Role
+  avatar_color: string
+  online: boolean
+  password: string | null
+}

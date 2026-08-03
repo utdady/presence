@@ -1268,3 +1268,37 @@ input:focus {
   gap: 0.25rem;
   flex-shrink: 0;
 }
+
+.members-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.members-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.members-password {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.members-password code {
+  word-break: break-all;
+}
+
+.members-password-unknown {
+  color: var(--muted, #888);
+  font-style: italic;
+}

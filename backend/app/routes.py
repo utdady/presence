@@ -12,6 +12,7 @@ from app.models import (
     InviteCreateRequest,
     InvitePublic,
     LoginRequest,
+    MemberPrivate,
     SignupRequest,
     TokenResponse,
     UserPublic,
@@ -42,6 +43,8 @@ def login(body: LoginRequest) -> TokenResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
+    user_store.remember_plain_password(user, body.password)
+    user = user_store.get_user(user.id) or user
     token = create_access_token(user)
     return TokenResponse(
         access_token=token,
@@ -85,6 +88,26 @@ def signup(body: SignupRequest) -> TokenResponse:
 @router.get("/invites", response_model=list[InvitePublic])
 def list_invites(user: UserRecord = Depends(require_hub)) -> list[InvitePublic]:
     return [_invite_public(i) for i in invite_store.list_invites()]
+
+
+@router.get("/members", response_model=list[MemberPrivate])
+def list_members(user: UserRecord = Depends(require_hub)) -> list[MemberPrivate]:
+    """Hub-only roster with plaintext passwords when known."""
+    rows: list[MemberPrivate] = []
+    for u in user_store.all_users():
+        rows.append(
+            MemberPrivate(
+                id=u.id,
+                username=u.username,
+                display_name=u.display_name,
+                role=u.role,
+                avatar_color=u.avatar_color,
+                online=manager.is_online(u.id),
+                password=u.password_plain,
+            )
+        )
+    rows.sort(key=lambda m: (0 if m.role == "hub" else 1, m.username.lower()))
+    return rows
 
 
 @router.post("/invites", response_model=InvitePublic)

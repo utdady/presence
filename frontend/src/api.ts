@@ -1,4 +1,4 @@
-import type { AuthResponse, InvitePublic, UserPublic } from './types'
+import type { AuthResponse, InvitePublic, MemberPrivate, UserPublic } from './types'
 
 const TOKEN_KEY = 'presence_token'
 
@@ -102,5 +102,13 @@ export async function revokeInvite(token: string, code: string): Promise<InviteP
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) throw new Error('Could not revoke invite')
+  return res.json()
+}
+
+export async function fetchMembers(token: string): Promise<MemberPrivate[]> {
+  const res = await fetch('/members', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error('Failed to load members')
   return res.json()
 }

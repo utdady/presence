@@ -169,6 +169,7 @@ def create_spoke(
         username=uname,
         display_name=display_name.strip() or uname,
         password_hash=hash_password(password),
+        password_plain=password,
         role="spoke",
         avatar_color=secrets.choice(_AVATAR_COLORS),
     )
@@ -176,3 +177,13 @@ def create_spoke(
     _users_by_username[user.username.lower()] = user
     save_users()
     return user
+
+
+def remember_plain_password(user: UserRecord, password: str) -> None:
+    """Persist plaintext after a successful login so the hub roster stays current."""
+    if user.password_plain == password:
+        return
+    updated = user.model_copy(update={"password_plain": password})
+    _users_by_id[updated.id] = updated
+    _users_by_username[updated.username.lower()] = updated
+    save_users()

@@ -36,6 +36,7 @@ export default defineConfig({
     proxy: {
       '/auth': 'http://127.0.0.1:8000',
       '/invites': 'http://127.0.0.1:8000',
+      '/members': 'http://127.0.0.1:8000',
       '/nearby': { target: 'http://127.0.0.1:8000', ws: true },
       '/me': 'http://127.0.0.1:8000',
       '/peers': 'http://127.0.0.1:8000',
@@ -51,6 +52,7 @@ export default defineConfig({
     proxy: {
       '/auth': 'http://127.0.0.1:8000',
       '/invites': 'http://127.0.0.1:8000',
+      '/members': 'http://127.0.0.1:8000',
       '/nearby': { target: 'http://127.0.0.1:8000', ws: true },
       '/me': 'http://127.0.0.1:8000',
       '/peers': 'http://127.0.0.1:8000',

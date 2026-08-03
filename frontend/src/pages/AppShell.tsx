@@ -5,6 +5,7 @@ import { Avatar } from '../components/Avatar'
 import { ChatView } from '../components/ChatView'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { InvitesPanel } from '../components/InvitesPanel'
+import { MembersPanel } from '../components/MembersPanel'
 import { NearbyCallPage } from '../nearby/NearbyCallPage'
 import { usePresenceSession } from '../usePresenceSession'
 
@@ -56,6 +57,7 @@ function PresenceInner({
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [nearbyMode, setNearbyMode] = useState(false)
   const [invitesMode, setInvitesMode] = useState(false)
+  const [membersMode, setMembersMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const selfImage = session.avatars[user.id]?.imageB64
@@ -97,6 +99,25 @@ function PresenceInner({
     )
   }
 
+  if (membersMode && token && user.role === 'hub') {
+    return (
+      <div className="app-frame app-frame--split">
+        <div className="nearby-page">
+          <header className="nearby-header">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => setMembersMode(false)}
+            >
+              Back
+            </button>
+            <h1>Members</h1>
+          </header>
+          <MembersPanel token={token} />
+        </div>
+      </div>
+    )
+  }
   if (invitesMode && token && user.role === 'hub') {
     return (
       <div className="app-frame app-frame--split">
@@ -166,27 +187,50 @@ function PresenceInner({
           </div>
           <div className="list-header-actions">
             {user.role === 'hub' && (
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Invites"
-                title="Invites"
-                onClick={() => setInvitesMode(true)}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2c0-2.1-2.7-3.8-6-3.8Z"
-                    fill="currentColor"
-                  />
-                  <path
-                    d="M19 8v3m0 0v3m0-3h3m-3 0h-3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Members"
+                  title="Members"
+                  onClick={() => setMembersMode(true)}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      d="M8 12a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 8 12Zm8 0a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 16 12Z"
+                      fill="currentColor"
+                    />
+                    <path
+                      d="M1.5 19c0-2.4 2.7-4 6.5-4s6.5 1.6 6.5 4M10 19c.4-1.7 2.2-3 5-3.5 2.6.3 5 1.6 5 3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Invites"
+                  title="Invites"
+                  onClick={() => setInvitesMode(true)}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2c0-2.1-2.7-3.8-6-3.8Z"
+                      fill="currentColor"
+                    />
+                    <path
+                      d="M19 8v3m0 0v3m0-3h3m-3 0h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </>
             )}
             <button
               type="button"
