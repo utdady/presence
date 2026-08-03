@@ -40,10 +40,14 @@ jobs:
 
       - name: Assemble debug APK
         working-directory: frontend/android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon \
+            -PpresenceVersionCode=$VERSION_CODE \
+            -PpresenceVersionName=$VERSION_CODE
 
       - name: Stage APK
         run: |
@@ -61,12 +65,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ github.sha }}
-          name: Android APK ${{ github.sha }}
+          name: Presence Android APK (build ${{ github.run_number }})
           body: |
+            versionCode: ${{ github.run_number }}
+
             Sideload APK for Presence (debug).
 
             Install on Android, then open the app — the UI loads from production
             (`https://presence-addy.fly.dev`) so web deploys apply automatically.
+
+            The in-app updater compares this `versionCode` to the installed APK
+            and prompts when a newer build is available.
 
             Rebuild this APK only when native/Bluetooth plugin code changes.
           files: releases/presence-debug.apk

@@ -1,6 +1,13 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../auth'
+import {
+  checkApkUpdate,
+  openApkDownload,
+  wasUpdateDismissed,
+  type ApkUpdateInfo,
+} from '../apkUpdate'
 import { fileToAvatarJpeg } from '../avatarImage'
+import { ApkUpdateBanner } from '../components/ApkUpdateBanner'
 import { Avatar } from '../components/Avatar'
 import { ChatView } from '../components/ChatView'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -59,6 +66,26 @@ function PresenceInner({
   const [invitesMode, setInvitesMode] = useState(false)
   const [membersMode, setMembersMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [apkUpdate, setApkUpdate] = useState<ApkUpdateInfo | null>(null)
+  const [apkBannerVisible, setApkBannerVisible] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void checkApkUpdate()
+      .then((info) => {
+        if (cancelled || !info) return
+        setApkUpdate(info)
+        if (!wasUpdateDismissed(info.latestBuild)) {
+          setApkBannerVisible(true)
+        }
+      })
+      .catch(() => {
+        /* offline / rate limit — ignore */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const selfImage = session.avatars[user.id]?.imageB64
 
@@ -160,6 +187,12 @@ function PresenceInner({
       className={`app-frame app-frame--split${activePeer ? ' app-frame--chat-open' : ''}`}
     >
       <aside className="sidebar">
+        {apkBannerVisible && apkUpdate && (
+          <ApkUpdateBanner
+            update={apkUpdate}
+            onDismiss={() => setApkBannerVisible(false)}
+          />
+        )}
         <header className="list-header">
           <div className="list-header-left">
             <button
@@ -345,6 +378,15 @@ function PresenceInner({
               >
                 Get latest Android APK
               </a>
+              {apkUpdate && (
+                <button
+                  type="button"
+                  className="sidebar-settings-action"
+                  onClick={() => openApkDownload(apkUpdate.downloadUrl)}
+                >
+                  Update APK (build {apkUpdate.latestBuild})
+                </button>
+              )}
               {selfImage && (
                 <button
                   type="button"

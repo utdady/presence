@@ -498,6 +498,34 @@ input:focus {
   cursor: wait;
 }
 
+.apk-update-banner {
+  margin: 0.65rem 0.85rem 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-elevated, var(--bg));
+}
+
+.apk-update-banner p {
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+.apk-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.apk-update-actions .apk-update-download {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
 .self-avatar-btn {
   padding: 0;
   border: none;

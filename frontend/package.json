@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.4.2",
     "idb": "^8.0.3",
     "libsodium-wrappers": "^0.8.4",
