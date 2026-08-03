@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:4173,http://localhost:4173"
     users_file: str = "users.json"
     invites_file: str = "invites.json"
-    # Optional raw JSON array of users (Fly secret). Wins over users_file when set.
+    # Optional raw JSON array of users (Fly secret). Seeds users_file only when
+    # that file is missing — never overwrites invite signups on disk/volume.
     users_json: str = ""
     # Empty = auto-detect ../frontend/dist relative to backend/
     static_dir: str = ""

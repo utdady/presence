@@ -293,6 +293,14 @@ function PresenceInner({
                 <span>Appearance</span>
                 <ThemeToggle />
               </div>
+              <a
+                className="sidebar-settings-action"
+                href="https://github.com/utdady/presence/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Get latest Android APK
+              </a>
               {selfImage && (
                 <button
                   type="button"

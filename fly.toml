@@ -15,7 +15,8 @@ primary_region = 'sin'
 [env]
   CORS_ORIGINS = '*'
   STATIC_DIR = '/app/frontend/dist'
-  USERS_FILE = '/app/users.json'
+  USERS_FILE = '/data/users.json'
+  INVITES_FILE = '/data/invites.json'
 
 [http_service]
   internal_port = 8000
@@ -31,6 +32,10 @@ primary_region = 'sin'
     grace_period = '10s'
     method = 'GET'
     path = '/health'
+
+[[mounts]]
+  source = 'presence_data'
+  destination = '/data'
 
 [[vm]]
   memory = '256mb'

@@ -77,10 +77,34 @@ fly deploy
 
 `backend/users.json` is gitignored. Only `backend/users.example.json` is
 committed (placeholder hub/alice/dummy accounts). Keep plaintext passwords in
-`credentials.local.json` (also gitignored) and share them out of band. After
-changing users, update the Fly secret and redeploy (or at least reset the
-secret — the app reloads users on boot). The free tier may stop machines when
-idle — first load can be slow; presence requires the machine running.
+`credentials.local.json` (also gitignored) and share them out of band. On Fly,
+invite signups persist on a **volume** (`/data/users.json`). `USERS_JSON` only
+seeds an empty volume — it does not overwrite existing users on deploy. After
+changing the seed roster locally, update the secret once:
+
+```powershell
+Get-Content -Raw backend/users.json | fly secrets set USERS_JSON=-
+```
+
+(Only needed for a fresh volume; day-to-day invites save themselves.)
+
+### Android auto-updates
+
+- **Web UI:** the Capacitor app loads `https://presence-addy.fly.dev`, so `fly deploy`
+  updates sign-in, chat UI, and settings without reinstalling.
+- **Native Bluetooth plugin:** still needs a new APK. GitHub Actions builds
+  `presence-debug.apk` on every `main` push and publishes it under
+  [Releases](https://github.com/utdady/presence/releases/latest). Settings →
+  **Get latest Android APK**, or:
+
+```bash
+cd frontend
+npm run apk:debug
+```
+
+Rebuild after UI/native changes with the same `npm run apk:debug` command.
+**Bluetooth Nearby only works in this APK** — deploying the website alone is not enough
+for the native plugin, but web UI updates apply automatically via the live URL.
 
 ### Test dummy bot
 

@@ -486,6 +486,7 @@ input:focus {
   font-size: 0.875rem;
   cursor: pointer;
   transition: color var(--motion);
+  text-decoration: none;
 }
 
 .sidebar-settings-action:hover {

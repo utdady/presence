@@ -16,16 +16,16 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     STATIC_DIR=/app/frontend/dist \
-    USERS_FILE=/app/users.json \
+    USERS_FILE=/data/users.json \
+    INVITES_FILE=/data/invites.json \
     CORS_ORIGINS=*
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
-# Placeholder only — production should set Fly secret USERS_JSON
-COPY backend/users.example.json ./users.json
 COPY backend/hash_password.py ./hash_password.py
+# Do not bake a roster — seed from USERS_JSON onto the data volume at first boot.
 COPY --from=frontend /src/frontend/dist ./frontend/dist
 
 EXPOSE 8000
