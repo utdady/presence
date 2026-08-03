@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
 import { setRememberedCreds } from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { BrandMark } from '../components/BrandMark'
 
 export function SignupPage({
   initialInvite = '',
@@ -48,7 +49,7 @@ export function SignupPage({
         <ThemeToggle />
       </div>
       <div className="login-panel">
-        <p className="brand">Presence</p>
+        <BrandMark size={36} />
         <h1>Join with invite</h1>
         <p className="login-sub">
           Create your account on this device. You can sign in with the same

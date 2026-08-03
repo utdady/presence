@@ -268,7 +268,20 @@ input:focus {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-muted);
-  margin: 0 0 0.35rem;
+  margin: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.85rem;
+}
+
+.brand-mark-icon {
+  display: block;
+  border-radius: 0.4rem;
+  flex-shrink: 0;
 }
 
 .login-page {
@@ -383,9 +396,14 @@ input:focus {
   min-width: 0;
 }
 
+.list-header-identity .brand-mark {
+  margin: 0 0 0.15rem;
+}
+
 .list-header-identity .brand {
   margin: 0;
   line-height: 1.2;
+  font-size: 0.7rem;
 }
 
 .list-header-actions {

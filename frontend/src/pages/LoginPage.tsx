@@ -6,6 +6,7 @@ import {
   setRememberedCreds,
 } from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { BrandMark } from '../components/BrandMark'
 
 function EyeIcon({ open }: { open: boolean }) {
   if (open) {
@@ -97,7 +98,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
         <ThemeToggle />
       </div>
       <div className="login-panel">
-        <p className="brand">Presence</p>
+        <BrandMark size={36} />
         <h1>Sign in</h1>
         <p className="login-sub">
           Same username and password work on any device. Invite-only — messages

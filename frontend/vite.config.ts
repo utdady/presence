@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Presence',
         short_name: 'Presence',
@@ -21,14 +21,38 @@ export default defineConfig({
             src: 'favicon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
+            purpose: 'any',
+          },
+          {
+            src: 'icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'any maskable',
           },
         ],
       },
       workbox: {
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [
+          /^\/auth/,
+          /^\/me/,
+          /^\/peers/,
+          /^\/invites/,
+          /^\/members/,
+          /^\/nearby/,
+          /^\/ws/,
+          /^\/health/,
+        ],
         runtimeCaching: [],
       },
+      // Register only in the browser — Capacitor WebView must not get a SW.
+      injectRegister: false,
     }),
   ],
   server: {

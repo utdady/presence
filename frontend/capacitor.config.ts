@@ -12,6 +12,7 @@ const config: CapacitorConfig = {
     // Native Bluetooth plugin still requires a rebuilt APK when Java/plugin code changes.
     url: LIVE_URL,
     cleartext: false,
+    allowNavigation: ['presence-addy.fly.dev'],
   },
   plugins: {},
 }

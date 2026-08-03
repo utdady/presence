@@ -9,6 +9,7 @@ import {
 import { fileToAvatarJpeg } from '../avatarImage'
 import { ApkUpdateBanner } from '../components/ApkUpdateBanner'
 import { Avatar } from '../components/Avatar'
+import { BrandMark } from '../components/BrandMark'
 import { ChatView } from '../components/ChatView'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { InvitesPanel } from '../components/InvitesPanel'
@@ -108,7 +109,7 @@ function PresenceInner({
     return (
       <div className="app-frame">
         <div className="empty-state centered">
-          <p className="brand">Presence</p>
+          <BrandMark size={28} />
           <p className="empty-state-lead">Signed in somewhere else</p>
           <p className="empty-state-sub">
             This account is open in another tab or device. Presence allows one
@@ -207,7 +208,7 @@ function PresenceInner({
               <Avatar user={user} size={36} imageB64={selfImage} />
             </button>
             <div className="list-header-identity">
-              <p className="brand">Presence</p>
+              <BrandMark size={22} />
               <p className="list-status">
                 <span
                   className={`status-dot${session.connected ? ' status-dot--live' : ''}`}
@@ -438,7 +439,7 @@ function PresenceInner({
           />
         ) : (
           <div className="chat-pane-empty">
-            <p className="brand">Presence</p>
+            <BrandMark size={28} />
             <p className="empty-state-lead">Pick someone who is present</p>
             <p className="empty-state-sub">
               Messages only live while both of you are here.

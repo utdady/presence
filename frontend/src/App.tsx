@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AuthProvider, useAuth } from './auth'
+import { BrandMark } from './components/BrandMark'
 import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 import { AppShell } from './pages/AppShell'
@@ -19,7 +20,7 @@ function Root() {
   if (!ready) {
     return (
       <div className="login-page">
-        <p className="brand">Presence</p>
+        <BrandMark size={36} />
       </div>
     )
   }

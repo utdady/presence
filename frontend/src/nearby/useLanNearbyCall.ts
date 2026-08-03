@@ -5,7 +5,8 @@ import {
   decryptJson,
   keyFingerprint,
 } from '../crypto'
-import { getToken } from '../api'
+import { getToken, apiUrl, PROD_ORIGIN } from '../api'
+import { Capacitor } from '@capacitor/core'
 import type {
   NearbyCallPhase,
   NearbyChatMessage,
@@ -22,6 +23,11 @@ export interface UseLanNearbyCallOptions {
 }
 
 function lanWsUrl(code: string, token: string): string {
+  if (Capacitor.isNativePlatform()) {
+    const u = new URL(PROD_ORIGIN)
+    const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${u.host}/nearby/lan/ws?token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}`
+  }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/nearby/lan/ws?token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}`
 }
@@ -294,7 +300,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
       return
     }
     try {
-      const res = await fetch('/nearby/lan/rooms', {
+      const res = await fetch(apiUrl('/nearby/lan/rooms'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -331,7 +337,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
       }
       try {
         const res = await fetch(
-          `/nearby/lan/rooms/${encodeURIComponent(normalized)}/join`,
+          apiUrl(`/nearby/lan/rooms/${encodeURIComponent(normalized)}/join`),
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
