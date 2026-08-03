@@ -170,12 +170,12 @@ Keep exactly one user with `"role": "hub"`.
 
 ## Nearby voice calls (Android)
 
-Offline 1:1 **voice calls** between two Presence devices that are physically
+Offline 1:1 **voice calls and encrypted chat** between two Presence devices that are physically
 nearby. Discovery uses Bluetooth (Google Nearby Connections); call audio uses
 local Wi‑Fi via WebRTC. **No Presence server / internet is required** for the
-call path. Cellular can stay off; keep **Bluetooth and Wi‑Fi** enabled.
+call/chat path on Android. Cellular can stay off; keep **Bluetooth and Wi‑Fi** enabled.
 
-On **Android**, Nearby uses Bluetooth discovery. On **web / PC / iPhone browser**, use **LAN Nearby**: create or join a 6-character room code (best on the same Wi‑Fi). Signaling goes through Presence; call audio is peer-to-peer.
+On **Android**, Nearby uses Bluetooth discovery. On **web / PC / iPhone browser**, use **LAN Nearby**: create or join a 6-character room code (best on the same Wi‑Fi). Signaling goes through Presence; call audio and chat ciphertext are peer-relayed (server never sees plaintext).
 
 ### Build a sideloadable APK (no Play Store)
 
@@ -234,7 +234,7 @@ Local plugin: `frontend/plugins/presence-nearby` (Capacitor `PresenceNearby`).
 2. Open **Nearby** from the friends header.
 3. Tap **Find nearby** on both devices; grant Bluetooth / location / mic if asked.
 4. Tap the other device, wait for key exchange (fingerprint shown).
-5. **Call** / **Accept**. Use Mute / End as needed.
+5. **Call** / **Accept**, or use the chat panel while connected. Use Mute / End as needed.
 
 ### Verification checklist
 
@@ -247,4 +247,4 @@ Local plugin: `frontend/plugins/presence-nearby` (Capacitor `PresenceNearby`).
 
 ### Not in v1
 
-Nearby texts, photos, voice notes, video calls, iOS Multipeer, and mesh hops.
+Nearby photos, voice notes, video calls, iOS Multipeer, and mesh hops.

@@ -56,6 +56,7 @@ function PresenceInner({
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [nearbyMode, setNearbyMode] = useState(false)
   const [invitesMode, setInvitesMode] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const selfImage = session.avatars[user.id]?.imageB64
 
@@ -149,43 +150,61 @@ function PresenceInner({
               disabled={avatarBusy}
               onClick={() => fileRef.current?.click()}
             >
-              <Avatar user={user} size={44} imageB64={selfImage} />
+              <Avatar user={user} size={36} imageB64={selfImage} />
             </button>
-            <div>
+            <div className="list-header-identity">
               <p className="brand">Presence</p>
-              <h1>Friends</h1>
+              <p className="list-status">
+                <span
+                  className={`status-dot${session.connected ? ' status-dot--live' : ''}`}
+                  aria-hidden
+                />
+                {session.connected ? 'Live' : 'Reconnecting…'}
+                {avatarBusy ? ' · Updating…' : ''}
+              </p>
             </div>
           </div>
           <div className="list-header-actions">
-            {selfImage && (
-              <button
-                type="button"
-                className="ghost-btn"
-                disabled={avatarBusy}
-                onClick={() => void session.clearSelfAvatar()}
-              >
-                Remove photo
-              </button>
-            )}
             {user.role === 'hub' && (
               <button
                 type="button"
-                className="ghost-btn"
+                className="icon-btn"
+                aria-label="Invites"
+                title="Invites"
                 onClick={() => setInvitesMode(true)}
               >
-                Invites
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2c0-2.1-2.7-3.8-6-3.8Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M19 8v3m0 0v3m0-3h3m-3 0h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </button>
             )}
             <button
               type="button"
-              className="ghost-btn"
+              className="icon-btn"
+              aria-label="Nearby"
+              title="Nearby"
               onClick={() => setNearbyMode(true)}
             >
-              Nearby
-            </button>
-            <ThemeToggle />
-            <button type="button" className="ghost-btn" onClick={logout}>
-              Sign out
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="10" r="2.25" fill="currentColor" />
+              </svg>
             </button>
           </div>
         </header>
@@ -196,10 +215,6 @@ function PresenceInner({
           className="sr-only"
           onChange={(e) => void onPickAvatar(e.target.files?.[0])}
         />
-        <p className="list-status">
-          {session.connected ? 'Live' : 'Reconnecting…'}
-          {avatarBusy ? ' · Updating photo…' : ''}
-        </p>
         {avatarError && <p className="list-avatar-error">{avatarError}</p>}
         <ul className="friend-list">
           {session.peers.map((peer) => {
@@ -244,6 +259,60 @@ function PresenceInner({
             </li>
           )}
         </ul>
+        <footer
+          className={`sidebar-settings${settingsOpen ? ' sidebar-settings--open' : ''}`}
+        >
+          <button
+            type="button"
+            className="sidebar-settings-toggle"
+            aria-expanded={settingsOpen}
+            aria-controls="sidebar-settings-panel"
+            onClick={() => setSettingsOpen((o) => !o)}
+          >
+            <span>Settings</span>
+            <svg
+              className="sidebar-settings-chevron"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path
+                d="M6 9l6 6 6-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          {settingsOpen && (
+            <div id="sidebar-settings-panel" className="sidebar-settings-body">
+              <div className="sidebar-settings-row">
+                <span>Appearance</span>
+                <ThemeToggle />
+              </div>
+              {selfImage && (
+                <button
+                  type="button"
+                  className="sidebar-settings-action"
+                  disabled={avatarBusy}
+                  onClick={() => void session.clearSelfAvatar()}
+                >
+                  Remove photo
+                </button>
+              )}
+              <button
+                type="button"
+                className="sidebar-settings-action"
+                onClick={logout}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </footer>
       </aside>
 
       <main className="chat-pane">

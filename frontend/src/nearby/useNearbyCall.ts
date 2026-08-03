@@ -9,6 +9,7 @@ import {
 import { nearbyCallsAvailable } from './capability'
 import type {
   NearbyCallPhase,
+  NearbyChatMessage,
   NearbyHello,
   NearbyPeerInfo,
   NearbyPlainSignal,
@@ -32,6 +33,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [muted, setMuted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
+  const [messages, setMessages] = useState<NearbyChatMessage[]>([])
 
   const sessionKeyRef = useRef<Uint8Array | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -102,6 +104,22 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
 
   const handlePlain = useCallback(
     async (plain: NearbyPlainSignal) => {
+      if (plain.type === 'chat') {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === plain.id)) return prev
+          return [
+            ...prev,
+            {
+              id: plain.id,
+              text: plain.text,
+              fromName: plain.fromName,
+              sentAt: plain.sentAt,
+              mine: false,
+            },
+          ]
+        })
+        return
+      }
       if (plain.type === 'call-offer') {
         setRemoteName(plain.fromName)
         setRemoteFingerprint(plain.fingerprint)
@@ -173,6 +191,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         setRemoteFingerprint(keyFingerprint(hello.publicKey))
         // Lexicographic compare of public keys decides polite peer
         politeRef.current = optsRef.current.publicKey > hello.publicKey
+        setMessages([])
         setPhase('ready')
         setStatus(`Connected to ${hello.displayName}`)
         return
@@ -239,6 +258,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
           setConnectedPeer(null)
           setRemoteName(null)
           setRemoteFingerprint(null)
+          setMessages([])
           setPhase('scanning')
           setStatus('Disconnected — still scanning')
         }),
@@ -285,6 +305,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     }
     setPeers([])
     setConnectedPeer(null)
+    setMessages([])
     setPhase('idle')
     setStatus('')
   }, [cleanupMedia])
@@ -382,6 +403,29 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     remoteAudioRef.current = el
   }, [])
 
+  const sendChat = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed || !sessionKeyRef.current) return
+      const msg: NearbyChatMessage = {
+        id: crypto.randomUUID(),
+        text: trimmed.slice(0, 2000),
+        fromName: optsRef.current.displayName,
+        sentAt: Date.now(),
+        mine: true,
+      }
+      await sendSignal({
+        type: 'chat',
+        id: msg.id,
+        text: msg.text,
+        fromName: msg.fromName,
+        sentAt: msg.sentAt,
+      })
+      setMessages((prev) => [...prev, msg])
+    },
+    [sendSignal],
+  )
+
   return {
     available,
     phase,
@@ -392,6 +436,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     muted,
     error,
     status,
+    messages,
     startScanning,
     stopScanning,
     connectTo,
@@ -401,5 +446,6 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     endCall,
     toggleMute,
     setRemoteAudioEl,
+    sendChat,
   }
 }

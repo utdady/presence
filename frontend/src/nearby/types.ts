@@ -26,6 +26,15 @@ export type NearbyPlainSignal =
   | { type: 'call-reject' }
   | { type: 'call-end' }
   | { type: 'webrtc-signal'; signal: RTCSessionDescriptionInit | RTCIceCandidateInit }
+  | { type: 'chat'; id: string; text: string; fromName: string; sentAt: number }
+
+export interface NearbyChatMessage {
+  id: string
+  text: string
+  fromName: string
+  sentAt: number
+  mine: boolean
+}
 
 export type NearbyWire =
   | NearbyHello

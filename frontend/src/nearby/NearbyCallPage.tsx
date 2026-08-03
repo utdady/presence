@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import type { NearbyCallPhase, NearbyChatMessage } from './types'
 import { nearbyTransport, type NearbyTransport } from './capability'
 import { useLanNearbyCall } from './useLanNearbyCall'
 import { useNearbyCall } from './useNearbyCall'
@@ -10,6 +11,13 @@ interface Props {
   privateKey: string
   onBack: () => void
 }
+
+const CHAT_PHASES = new Set<NearbyCallPhase>([
+  'ready',
+  'outgoing',
+  'incoming',
+  'in_call',
+])
 
 export function NearbyCallPage(props: Props) {
   const [transport, setTransport] = useState<NearbyTransport | null>(null)
@@ -72,7 +80,8 @@ function NativeNearbyUI({
       <p className="nearby-status">{call.status || 'Idle'}</p>
       {call.error && <p className="form-error">{call.error}</p>}
       <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Android Nearby (Bluetooth discovery + local Wi‑Fi).
+        Android Nearby (Bluetooth discovery + local Wi‑Fi). Voice and chat stay
+        on-device while connected.
       </p>
 
       {call.phase === 'idle' && (
@@ -115,6 +124,13 @@ function NativeNearbyUI({
       )}
 
       <CallControls call={call} />
+      {CHAT_PHASES.has(call.phase) && (
+        <NearbyChatPanel
+          messages={call.messages}
+          peerName={call.remoteName}
+          onSend={(text) => void call.sendChat(text)}
+        />
+      )}
     </div>
   )
 }
@@ -154,7 +170,7 @@ function LanNearbyUI({
       {call.error && <p className="form-error">{call.error}</p>}
       <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
         Web / PC: share a short code. Best on the same Wi‑Fi. Signaling uses
-        Presence; call audio is peer-to-peer (not stored on the server).
+        Presence; voice and chat are peer-to-peer (not stored on the server).
       </p>
 
       {call.phase === 'idle' && (
@@ -192,6 +208,13 @@ function LanNearbyUI({
       )}
 
       <CallControls call={call} showLeave />
+      {CHAT_PHASES.has(call.phase) && (
+        <NearbyChatPanel
+          messages={call.messages}
+          peerName={call.remoteName}
+          onSend={call.sendChat}
+        />
+      )}
     </div>
   )
 }
@@ -280,5 +303,69 @@ function CallControls({
         </div>
       )}
     </>
+  )
+}
+
+function NearbyChatPanel({
+  messages,
+  peerName,
+  onSend,
+}: {
+  messages: NearbyChatMessage[]
+  peerName: string | null
+  onSend: (text: string) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [messages])
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    const text = draft.trim()
+    if (!text) return
+    onSend(text)
+    setDraft('')
+  }
+
+  return (
+    <div className="nearby-chat">
+      <p className="nearby-chat-label">
+        Chat{peerName ? ` · ${peerName}` : ''}
+      </p>
+      <div className="nearby-chat-list" ref={listRef}>
+        {messages.length === 0 ? (
+          <p className="nearby-note">Messages only while you stay connected.</p>
+        ) : (
+          messages.map((m) => (
+            <div
+              key={m.id}
+              className={`nearby-chat-bubble${m.mine ? ' nearby-chat-bubble--mine' : ''}`}
+            >
+              {!m.mine && (
+                <span className="nearby-chat-from">{m.fromName}</span>
+              )}
+              <p>{m.text}</p>
+            </div>
+          ))
+        )}
+      </div>
+      <form className="nearby-chat-compose" onSubmit={submit}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Message…"
+          maxLength={2000}
+          autoComplete="off"
+        />
+        <button type="submit" disabled={!draft.trim()}>
+          Send
+        </button>
+      </form>
+    </div>
   )
 }

@@ -8,6 +8,7 @@ import {
 import { getToken } from '../api'
 import type {
   NearbyCallPhase,
+  NearbyChatMessage,
   NearbyHello,
   NearbyPlainSignal,
   NearbyWire,
@@ -33,6 +34,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
   const [muted, setMuted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('')
+  const [messages, setMessages] = useState<NearbyChatMessage[]>([])
 
   const sessionKeyRef = useRef<Uint8Array | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -119,6 +121,22 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
 
   const handlePlain = useCallback(
     async (plain: NearbyPlainSignal) => {
+      if (plain.type === 'chat') {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === plain.id)) return prev
+          return [
+            ...prev,
+            {
+              id: plain.id,
+              text: plain.text,
+              fromName: plain.fromName,
+              sentAt: plain.sentAt,
+              mine: false,
+            },
+          ]
+        })
+        return
+      }
       if (plain.type === 'call-offer') {
         setRemoteName(plain.fromName)
         setRemoteFingerprint(plain.fingerprint)
@@ -177,6 +195,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     async (wire: NearbyWire) => {
       if (wire.type === 'hello') {
         const hello = wire as NearbyHello
+        const firstKey = !sessionKeyRef.current
         sessionKeyRef.current = deriveSessionKey(
           optsRef.current.privateKey,
           hello.publicKey,
@@ -184,9 +203,12 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         setRemoteName(hello.displayName)
         setRemoteFingerprint(keyFingerprint(hello.publicKey))
         politeRef.current = optsRef.current.publicKey > hello.publicKey
+        if (firstKey) {
+          setMessages([])
+          sendHello()
+        }
         setPhase('ready')
         setStatus(`Connected to ${hello.displayName}`)
-        sendHello()
         return
       }
       if (wire.type === 'enc') {
@@ -237,7 +259,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         if (msg.type === 'peer-left') {
           cleanupMedia()
           sessionKeyRef.current = null
-          
+          setMessages([])
           setPhase('scanning')
           setStatus('Peer left — waiting…')
           return
@@ -322,7 +344,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     cleanupMedia()
     closeWs()
     sessionKeyRef.current = null
-    
+    setMessages([])
     setRoomCode(null)
     setRemoteName(null)
     setRemoteFingerprint(null)
@@ -408,6 +430,29 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     remoteAudioRef.current = el
   }, [])
 
+  const sendChat = useCallback(
+    (text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed || !sessionKeyRef.current) return
+      const msg: NearbyChatMessage = {
+        id: crypto.randomUUID(),
+        text: trimmed.slice(0, 2000),
+        fromName: optsRef.current.displayName,
+        sentAt: Date.now(),
+        mine: true,
+      }
+      sendSignal({
+        type: 'chat',
+        id: msg.id,
+        text: msg.text,
+        fromName: msg.fromName,
+        sentAt: msg.sentAt,
+      })
+      setMessages((prev) => [...prev, msg])
+    },
+    [sendSignal],
+  )
+
   return {
     phase,
     roomCode,
@@ -416,6 +461,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     muted,
     error,
     status,
+    messages,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -425,5 +471,6 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     endCall,
     toggleMute,
     setRemoteAudioEl,
+    sendChat,
   }
 }
