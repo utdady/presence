@@ -168,18 +168,32 @@ Keep exactly one user with `"role": "hub"`.
 - Run `python bot/main.py`, chat with Dummy from hub, then Ctrl+C the bot to see offline transition
 
 
-## Nearby voice calls (Android)
+## Nearby (Bluetooth-only on Android)
 
-Offline 1:1 **voice calls and encrypted chat** between two Presence devices that are physically
-nearby. Discovery uses Bluetooth (Google Nearby Connections); call audio uses
-local Wi‑Fi via WebRTC. **No Presence server / internet is required** for the
-call/chat path on Android. Cellular can stay off; keep **Bluetooth and Wi‑Fi** enabled.
+Offline 1:1 **encrypted chat and voice** between two Presence Android devices that
+are physically nearby. Discovery and all data use **Google Nearby Connections
+over Bluetooth** — **no Wi‑Fi and no internet** are required for the Nearby
+session (sign in once beforehand so identity keys exist). Cellular and Wi‑Fi can
+stay off; keep **Bluetooth** on and grant location / Nearby permissions if asked.
 
-On **Android**, Nearby uses Bluetooth discovery. On **web / PC / iPhone browser**, use **LAN Nearby**: create or join a 6-character room code (best on the same Wi‑Fi). Signaling goes through Presence; call audio and chat ciphertext are peer-relayed (server never sees plaintext).
+Voice is sent as short encrypted audio chunks over the same Nearby payload channel
+(talkie-quality latency). Chat uses the same encrypted session.
+
+On **web / PC / iPhone browser**, peer Bluetooth is not available. The Nearby
+screen shows an install CTA for the Android APK. Optional **online rooms**
+(room codes) still exist as a fallback: they need the Presence server on the
+internet for signaling and are **not** offline Bluetooth.
 
 ### Build a sideloadable APK (no Play Store)
 
-From a machine that already has the local toolchain under `tools/` (JDK + Android SDK), or after following the one-time setup below:
+**One-time toolchain** (downloads Temurin JDK 21 + Android SDK into gitignored `tools/`):
+
+```bash
+cd frontend
+npm run apk:setup
+```
+
+Then build:
 
 ```bash
 cd frontend
@@ -201,6 +215,7 @@ adb install -r releases/presence-debug.apk
 ```
 
 Rebuild after UI/native changes with the same `npm run apk:debug` command.
+**Bluetooth Nearby only works in this APK** — deploying the website alone is not enough.
 
 ### Build the Android app (Android Studio)
 
@@ -227,20 +242,21 @@ Nearby/Bluetooth).
 
 Local plugin: `frontend/plugins/presence-nearby` (Capacitor `PresenceNearby`).
 
-### In-app flow
+### In-app flow (Android)
 
-1. Sign in on both devices (online once is enough to create the session; Nearby
-   itself does not need the hub to stay up).
-2. Open **Nearby** from the friends header.
-3. Tap **Find nearby** on both devices; grant Bluetooth / location / mic if asked.
-4. Tap the other device, wait for key exchange (fingerprint shown).
-5. **Call** / **Accept**, or use the chat panel while connected. Use Mute / End as needed.
+1. Sign in on both devices (online once is enough for keys; Nearby itself does
+   not need the hub or internet after that).
+2. Open **Nearby** → **Find nearby**; grant Bluetooth / location / mic if asked.
+3. Tap the other device, wait for key exchange (fingerprint shown).
+4. Chat in the panel, and/or **Call** / **Accept**. Use Mute / End as needed.
+5. Optional: airplane mode with Bluetooth still on — chat and call should keep working.
 
 ### Verification checklist
 
-- [ ] Two Android builds discover each other with airplane mode on and Wi‑Fi on
-- [ ] Outgoing and incoming call both connect with duplex audio
-- [ ] Mute disables local mic; End returns both sides to ready/scanning
+- [ ] Two Android builds discover each other with airplane mode on and Wi‑Fi off (Bluetooth on)
+- [ ] Chat works both ways while connected without internet
+- [ ] Outgoing and incoming call both connect with audible audio over Bluetooth payloads
+- [ ] Mute stops sending local audio; End returns both sides to ready/scanning
 - [ ] Decline rejects an incoming call
 - [ ] Online hub chat still works in the same app when the network is back
 - [ ] Web/PWA Nearby screen shows the Android-app CTA (does not silently fail)

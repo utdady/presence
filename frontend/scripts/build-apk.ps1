@@ -3,14 +3,34 @@ $ErrorActionPreference = "Stop"
 $FrontendRoot = Split-Path $PSScriptRoot -Parent
 $RepoRoot = Split-Path $FrontendRoot -Parent
 $Tools = Join-Path $RepoRoot "tools"
-$JdkHome = Get-ChildItem (Join-Path $Tools "jdk") -Directory | Select-Object -First 1 -ExpandProperty FullName
+$JdkDir = Join-Path $Tools "jdk"
+$JdkHome = $null
+if (Test-Path $JdkDir) {
+  $JdkHome = Get-ChildItem $JdkDir -Directory -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path (Join-Path $_.FullName "bin\java.exe") } |
+    Select-Object -First 1 -ExpandProperty FullName
+}
 $SdkHome = Join-Path $Tools "android-sdk"
 
-if (-not (Test-Path "$JdkHome\bin\java.exe")) {
-  throw "JDK not found under tools/jdk. See README Nearby / Android APK section."
+if (-not $JdkHome -or -not (Test-Path "$JdkHome\bin\java.exe")) {
+  throw @"
+JDK not found under tools/jdk.
+
+One-time setup (downloads Temurin JDK 21 + Android SDK into tools/):
+  powershell -ExecutionPolicy Bypass -File frontend/scripts/setup-android-tools.ps1
+
+Then re-run: npm run apk:debug
+"@
 }
-if (-not (Test-Path $SdkHome)) {
-  throw "Android SDK not found at tools/android-sdk."
+if (-not (Test-Path $SdkHome) -or -not (Test-Path "$SdkHome\platform-tools")) {
+  throw @"
+Android SDK not found at tools/android-sdk.
+
+One-time setup:
+  powershell -ExecutionPolicy Bypass -File frontend/scripts/setup-android-tools.ps1
+
+Then re-run: npm run apk:debug
+"@
 }
 
 $env:JAVA_HOME = $JdkHome

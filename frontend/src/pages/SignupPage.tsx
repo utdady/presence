@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
+import { setRememberedCreds } from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
 
 export function SignupPage({
@@ -15,6 +16,7 @@ export function SignupPage({
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -23,12 +25,16 @@ export function SignupPage({
     setError(null)
     setBusy(true)
     try {
+      const user = username.trim()
       await signup({
         invite_code: inviteCode.trim(),
-        username: username.trim(),
-        display_name: displayName.trim() || username.trim(),
+        username: user,
+        display_name: displayName.trim() || user,
         password,
       })
+      if (remember) {
+        setRememberedCreds({ username: user, password })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed')
     } finally {
@@ -45,8 +51,8 @@ export function SignupPage({
         <p className="brand">Presence</p>
         <h1>Join with invite</h1>
         <p className="login-sub">
-          Invite-only. After you join, you can message the hub — not other
-          members.
+          Create your account on this device. You can sign in with the same
+          username and password on other phones or browsers later.
         </p>
         <form onSubmit={onSubmit} className="login-form">
           <label>
@@ -97,6 +103,14 @@ export function SignupPage({
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </span>
+          </label>
+          <label className="remember-row">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            <span>Remember on this device</span>
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={busy}>

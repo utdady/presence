@@ -29,7 +29,7 @@ import java.nio.charset.StandardCharsets;
 public class PresenceNearbyPlugin extends Plugin {
     private static final String TAG = "PresenceNearby";
     private static final String SERVICE_ID = "presence.nearby.v1";
-    private static final Strategy STRATEGY = Strategy.P2P_STAR;
+    private static final Strategy STRATEGY = Strategy.P2P_POINT_TO_POINT;
 
     private ConnectionsClient connectionsClient;
     private String connectedEndpointId;

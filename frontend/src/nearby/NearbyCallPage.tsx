@@ -80,8 +80,9 @@ function NativeNearbyUI({
       <p className="nearby-status">{call.status || 'Idle'}</p>
       {call.error && <p className="form-error">{call.error}</p>}
       <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Android Nearby (Bluetooth discovery + local Wi‑Fi). Voice and chat stay
-        on-device while connected.
+        Bluetooth only — no Wi‑Fi or internet needed. Keep Bluetooth on; grant
+        location / Nearby permissions if asked. Chat and voice travel over
+        Nearby Connections payloads.
       </p>
 
       {call.phase === 'idle' && (
@@ -110,7 +111,7 @@ function NativeNearbyUI({
               </li>
             ))}
             {call.peers.length === 0 && (
-              <li className="nearby-note">Scanning…</li>
+              <li className="nearby-note">Scanning over Bluetooth…</li>
             )}
           </ul>
           <button
@@ -123,7 +124,7 @@ function NativeNearbyUI({
         </div>
       )}
 
-      <CallControls call={call} />
+      <CallControls call={call} bluetooth />
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}
@@ -145,6 +146,7 @@ function LanNearbyUI({
   const call = useLanNearbyCall({ userId, displayName, publicKey, privateKey })
   const audioRef = useRef<HTMLAudioElement>(null)
   const [joinCode, setJoinCode] = useState('')
+  const [showOnlineRooms, setShowOnlineRooms] = useState(false)
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
@@ -168,28 +170,58 @@ function LanNearbyUI({
       <audio ref={audioRef} autoPlay playsInline />
       <p className="nearby-status">{call.status || 'Idle'}</p>
       {call.error && <p className="form-error">{call.error}</p>}
-      <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Web / PC: share a short code. Best on the same Wi‑Fi. Signaling uses
-        Presence; voice and chat are peer-to-peer (not stored on the server).
-      </p>
 
       {call.phase === 'idle' && (
         <div className="nearby-actions">
-          <button type="button" onClick={() => void call.createRoom()}>
-            Create room
-          </button>
-          <div className="invites-create">
-            <input
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="Room code"
-              maxLength={8}
-              autoCapitalize="characters"
-            />
-            <button type="button" onClick={() => void call.joinRoom(joinCode)}>
-              Join
-            </button>
+          <div className="nearby-cta">
+            <p className="empty-state-lead">Bluetooth Nearby</p>
+            <p className="nearby-note">
+              Offline chat and voice over Bluetooth need the Android app. Install
+              the sideload APK, sign in once, then open Nearby → Find nearby.
+              Browsers cannot do peer Bluetooth.
+            </p>
+            <p className="nearby-note">
+              Build: <code>cd frontend && npm run apk:debug</code> →{' '}
+              <code>releases/presence-debug.apk</code>
+            </p>
           </div>
+
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => setShowOnlineRooms((v) => !v)}
+          >
+            {showOnlineRooms
+              ? 'Hide online rooms'
+              : 'Online room (needs internet)'}
+          </button>
+
+          {showOnlineRooms && (
+            <>
+              <p className="nearby-note">
+                Room codes use the Presence server for signaling. They are not
+                offline Bluetooth.
+              </p>
+              <button type="button" onClick={() => void call.createRoom()}>
+                Create room
+              </button>
+              <div className="invites-create">
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="Room code"
+                  maxLength={8}
+                  autoCapitalize="characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => void call.joinRoom(joinCode)}
+                >
+                  Join
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -222,6 +254,7 @@ function LanNearbyUI({
 function CallControls({
   call,
   showLeave,
+  bluetooth,
 }: {
   call: {
     phase: string
@@ -236,6 +269,7 @@ function CallControls({
     leaveRoom?: () => void
   }
   showLeave?: boolean
+  bluetooth?: boolean
 }) {
   return (
     <>
@@ -245,6 +279,11 @@ function CallControls({
           {call.remoteFingerprint && (
             <p className="nearby-fingerprint">Key {call.remoteFingerprint}</p>
           )}
+          <p className="nearby-note">
+            {bluetooth
+              ? 'Chat below anytime. Call uses Bluetooth audio chunks.'
+              : 'Chat below anytime. Call uses peer-to-peer audio.'}
+          </p>
           <div className="nearby-actions-row">
             <button type="button" onClick={() => void call.startCall()}>
               Call
@@ -291,6 +330,7 @@ function CallControls({
         <div className="nearby-panel nearby-ready">
           <p className="empty-state-lead">
             In call · {call.remoteName ?? 'Peer'}
+            {bluetooth ? ' · BT' : ''}
           </p>
           <div className="nearby-actions-row">
             <button type="button" onClick={call.toggleMute}>

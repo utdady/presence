@@ -23,6 +23,47 @@ export interface UseNearbyCallOptions {
   privateKey: string
 }
 
+const VOICE_TIMESLICE_MS = 200
+const MAX_VOICE_B64 = 24_000
+
+function pickRecorderMime(): string {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ]
+  for (const mime of candidates) {
+    if (
+      typeof MediaRecorder !== 'undefined' &&
+      MediaRecorder.isTypeSupported(mime)
+    ) {
+      return mime
+    }
+  }
+  return ''
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function base64ToBlob(dataB64: string, mime: string): Blob {
+  const bin = atob(dataB64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: mime || 'audio/webm' })
+}
+
 export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [available, setAvailable] = useState<boolean | null>(null)
   const [phase, setPhase] = useState<NearbyCallPhase>('idle')
@@ -36,26 +77,62 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [messages, setMessages] = useState<NearbyChatMessage[]>([])
 
   const sessionKeyRef = useRef<Uint8Array | null>(null)
-  const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
-  const makingOfferRef = useRef(false)
-  const politeRef = useRef(false)
-  const ignoreOfferRef = useRef(false)
+  const voiceIdRef = useRef(crypto.randomUUID())
+  const voiceSeqRef = useRef(0)
+  const playQueueRef = useRef<Blob[]>([])
+  const playingRef = useRef(false)
+  const mutedRef = useRef(false)
   const optsRef = useRef(opts)
   optsRef.current = opts
 
-  const cleanupMedia = useCallback(() => {
-    pcRef.current?.close()
-    pcRef.current = null
+  const pumpPlayback = useCallback(() => {
+    if (playingRef.current) return
+    const audio = remoteAudioRef.current
+    const next = playQueueRef.current.shift()
+    if (!audio || !next) return
+    playingRef.current = true
+    const url = URL.createObjectURL(next)
+    audio.srcObject = null
+    audio.src = url
+    const clear = () => {
+      URL.revokeObjectURL(url)
+      playingRef.current = false
+      pumpPlayback()
+    }
+    audio.onended = clear
+    audio.onerror = clear
+    void audio.play().catch(clear)
+  }, [])
+
+  const stopVoiceCapture = useCallback(() => {
+    const recorder = recorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop()
+      } catch {
+        /* ignore */
+      }
+    }
+    recorderRef.current = null
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
+  }, [])
+
+  const cleanupMedia = useCallback(() => {
+    stopVoiceCapture()
+    playQueueRef.current = []
+    playingRef.current = false
     if (remoteAudioRef.current) {
+      remoteAudioRef.current.pause()
+      remoteAudioRef.current.removeAttribute('src')
       remoteAudioRef.current.srcObject = null
     }
-    makingOfferRef.current = false
-    ignoreOfferRef.current = false
-  }, [])
+    setMuted(false)
+    mutedRef.current = false
+  }, [stopVoiceCapture])
 
   const sendRaw = useCallback(async (wire: NearbyWire) => {
     await PresenceNearby.send({ data: JSON.stringify(wire) })
@@ -71,35 +148,41 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     [sendRaw],
   )
 
-  const ensurePc = useCallback(async () => {
-    if (pcRef.current) return pcRef.current
-    const pc = new RTCPeerConnection({ iceServers: [] })
-    pcRef.current = pc
-
-    pc.onicecandidate = (ev) => {
-      if (!ev.candidate) return
-      void sendSignal({
-        type: 'webrtc-signal',
-        signal: ev.candidate.toJSON(),
-      }).catch(() => {})
+  const startVoiceCapture = useCallback(async () => {
+    if (recorderRef.current) return
+    const mime = pickRecorderMime()
+    if (!mime) {
+      throw new Error('This device cannot record call audio')
     }
-
-    pc.ontrack = (ev) => {
-      const audio = remoteAudioRef.current
-      if (!audio) return
-      audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track])
-      void audio.play().catch(() => {})
-    }
-
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: false,
     })
     localStreamRef.current = stream
-    for (const track of stream.getTracks()) {
-      pc.addTrack(track, stream)
+    voiceIdRef.current = crypto.randomUUID()
+    voiceSeqRef.current = 0
+    const recorder = new MediaRecorder(stream, { mimeType: mime })
+    recorderRef.current = recorder
+    recorder.ondataavailable = (ev) => {
+      if (!ev.data || ev.data.size === 0 || mutedRef.current) return
+      void (async () => {
+        try {
+          const dataB64 = await blobToBase64(ev.data)
+          if (dataB64.length > MAX_VOICE_B64) return
+          const seq = voiceSeqRef.current++
+          await sendSignal({
+            type: 'voice-chunk',
+            id: voiceIdRef.current,
+            seq,
+            mime: ev.data.type || mime,
+            dataB64,
+          })
+        } catch {
+          /* drop chunk */
+        }
+      })()
     }
-    return pc
+    recorder.start(VOICE_TIMESLICE_MS)
   }, [sendSignal])
 
   const handlePlain = useCallback(
@@ -118,6 +201,16 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
             },
           ]
         })
+        return
+      }
+      if (plain.type === 'voice-chunk') {
+        const blob = base64ToBlob(plain.dataB64, plain.mime)
+        playQueueRef.current.push(blob)
+        // Cap backlog on slow BT
+        if (playQueueRef.current.length > 40) {
+          playQueueRef.current.splice(0, playQueueRef.current.length - 40)
+        }
+        pumpPlayback()
         return
       }
       if (plain.type === 'call-offer') {
@@ -140,39 +233,19 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         return
       }
       if (plain.type === 'call-answer') {
-        setPhase('in_call')
-        setStatus('In call')
+        try {
+          await startVoiceCapture()
+          setPhase('in_call')
+          setStatus('In call (Bluetooth)')
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Mic failed')
+          setPhase('ready')
+        }
         return
       }
-      if (plain.type === 'webrtc-signal') {
-        const pc = await ensurePc()
-        const signal = plain.signal
-        if ('sdp' in signal && signal.sdp) {
-          const desc = signal as RTCSessionDescriptionInit
-          const offerCollision =
-            desc.type === 'offer' &&
-            (makingOfferRef.current || pc.signalingState !== 'stable')
-          ignoreOfferRef.current = !politeRef.current && offerCollision
-          if (ignoreOfferRef.current) return
-          await pc.setRemoteDescription(desc)
-          if (desc.type === 'offer') {
-            const answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-            await sendSignal({
-              type: 'webrtc-signal',
-              signal: answer,
-            })
-          }
-        } else if ('candidate' in signal || 'sdpMid' in signal) {
-          try {
-            await pc.addIceCandidate(signal as RTCIceCandidateInit)
-          } catch {
-            if (!ignoreOfferRef.current) throw new Error('ICE failed')
-          }
-        }
-      }
+      // webrtc-signal ignored on Bluetooth path
     },
-    [cleanupMedia, ensurePc, sendSignal],
+    [cleanupMedia, pumpPlayback, startVoiceCapture],
   )
 
   const handleMessage = useCallback(
@@ -189,8 +262,6 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         sessionKeyRef.current = key
         setRemoteName(hello.displayName)
         setRemoteFingerprint(keyFingerprint(hello.publicKey))
-        // Lexicographic compare of public keys decides polite peer
-        politeRef.current = optsRef.current.publicKey > hello.publicKey
         setMessages([])
         setPhase('ready')
         setStatus(`Connected to ${hello.displayName}`)
@@ -339,32 +410,26 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         fromName: optsRef.current.displayName,
         fingerprint: keyFingerprint(optsRef.current.publicKey),
       })
-      const pc = await ensurePc()
-      makingOfferRef.current = true
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      await sendSignal({ type: 'webrtc-signal', signal: offer })
-      makingOfferRef.current = false
     } catch (e) {
-      makingOfferRef.current = false
       cleanupMedia()
       setError(e instanceof Error ? e.message : 'Call failed')
       setPhase('ready')
     }
-  }, [cleanupMedia, ensurePc, sendSignal])
+  }, [cleanupMedia, sendSignal])
 
   const acceptCall = useCallback(async () => {
     setError(null)
     try {
-      await ensurePc()
       await sendSignal({ type: 'call-answer' })
+      await startVoiceCapture()
       setPhase('in_call')
-      setStatus('In call')
+      setStatus('In call (Bluetooth)')
     } catch (e) {
+      cleanupMedia()
       setError(e instanceof Error ? e.message : 'Accept failed')
       setPhase('ready')
     }
-  }, [ensurePc, sendSignal])
+  }, [cleanupMedia, sendSignal, startVoiceCapture])
 
   const rejectCall = useCallback(async () => {
     try {
@@ -384,20 +449,21 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
       /* ignore */
     }
     cleanupMedia()
-    setMuted(false)
     setPhase(sessionKeyRef.current ? 'ready' : 'scanning')
     setStatus('Call ended')
   }, [cleanupMedia, sendSignal])
 
   const toggleMute = useCallback(() => {
-    const stream = localStreamRef.current
-    if (!stream) return
-    const next = !muted
-    for (const track of stream.getAudioTracks()) {
-      track.enabled = !next
-    }
+    const next = !mutedRef.current
+    mutedRef.current = next
     setMuted(next)
-  }, [muted])
+    const stream = localStreamRef.current
+    if (stream) {
+      for (const track of stream.getAudioTracks()) {
+        track.enabled = !next
+      }
+    }
+  }, [])
 
   const setRemoteAudioEl = useCallback((el: HTMLAudioElement | null) => {
     remoteAudioRef.current = el

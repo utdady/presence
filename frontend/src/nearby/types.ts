@@ -25,8 +25,16 @@ export type NearbyPlainSignal =
   | { type: 'call-answer' }
   | { type: 'call-reject' }
   | { type: 'call-end' }
+  /** Legacy LAN/WebRTC path only — ignored on Bluetooth native. */
   | { type: 'webrtc-signal'; signal: RTCSessionDescriptionInit | RTCIceCandidateInit }
   | { type: 'chat'; id: string; text: string; fromName: string; sentAt: number }
+  | {
+      type: 'voice-chunk'
+      id: string
+      seq: number
+      mime: string
+      dataB64: string
+    }
 
 export interface NearbyChatMessage {
   id: string

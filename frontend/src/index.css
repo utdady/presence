@@ -344,6 +344,25 @@ input:focus {
   font-size: 0.9rem;
 }
 
+.remember-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.55rem !important;
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-row input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.remember-row span {
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
 .list-header {
   display: flex;
   justify-content: space-between;

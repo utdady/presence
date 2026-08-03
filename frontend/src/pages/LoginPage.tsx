@@ -1,5 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
+import {
+  clearRememberedCreds,
+  getRememberedCreds,
+  setRememberedCreds,
+} from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -56,8 +61,13 @@ function EyeIcon({ open }: { open: boolean }) {
 
 export function LoginPage({ onJoin }: { onJoin?: () => void }) {
   const { login } = useAuth()
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState(
+    () => getRememberedCreds()?.username ?? '',
+  )
+  const [password, setPassword] = useState(
+    () => getRememberedCreds()?.password ?? '',
+  )
+  const [remember, setRemember] = useState(() => !!getRememberedCreds())
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -67,7 +77,13 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
     setError(null)
     setBusy(true)
     try {
-      await login(username.trim(), password)
+      const user = username.trim()
+      await login(user, password)
+      if (remember) {
+        setRememberedCreds({ username: user, password })
+      } else {
+        clearRememberedCreds()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -84,7 +100,8 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
         <p className="brand">Presence</p>
         <h1>Sign in</h1>
         <p className="login-sub">
-          Invite-only. Messages live only while both of you are here.
+          Same username and password work on any device. Invite-only — messages
+          live only while both of you are here.
         </p>
         <form onSubmit={onSubmit} className="login-form">
           <label>
@@ -116,6 +133,14 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
                 <EyeIcon open={showPassword} />
               </button>
             </span>
+          </label>
+          <label className="remember-row">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            <span>Remember on this device</span>
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={busy}>

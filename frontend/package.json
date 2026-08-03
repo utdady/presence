@@ -11,7 +11,8 @@
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
     "cap:copy": "npx cap copy",
-    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1"
+    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1",
+    "apk:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-android-tools.ps1"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

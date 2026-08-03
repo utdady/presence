@@ -268,9 +268,16 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
           void handleRelay(msg.payload)
         }
       }
-      ws.onerror = () => setError('Room connection error')
-      ws.onclose = () => {
+      ws.onerror = () =>
+        setError(
+          'Could not reach Presence for this room. Online rooms need internet (the server may be waking). For offline Bluetooth chat/calls, install the Android app.',
+        )
+      ws.onclose = (ev) => {
         if (wsRef.current === ws) wsRef.current = null
+        if (ev.code === 4401) {
+          setError('Session expired — sign in again, then retry the room.')
+          setPhase('idle')
+        }
       }
     },
     [cleanupMedia, closeWs, handleRelay, sendHello],
@@ -297,7 +304,11 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
       setStatus(`Share code ${body.code} — waiting for peer…`)
       connectWs(body.code)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create failed')
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not create room — check that you are online.',
+      )
       setPhase('idle')
     }
   }, [connectWs])
@@ -333,7 +344,11 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         setRoomCode(normalized)
         connectWs(normalized)
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Join failed')
+        setError(
+          e instanceof Error
+            ? e.message
+            : 'Could not join room — check the code and that you are online.',
+        )
         setPhase('idle')
       }
     },
