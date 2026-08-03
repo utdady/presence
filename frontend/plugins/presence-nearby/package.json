@@ -4,9 +4,9 @@
   "description": "Capacitor plugin for Presence Nearby Connections",
   "main": "src/index.ts",
   "module": "src/index.ts",
-  "types": "src/definitions.ts",
+  "types": "src/index.ts",
   "type": "module",
-  "files": ["src/", "android/", "dist/"],
+  "files": ["src/", "android/"],
   "author": "Presence",
   "license": "UNLICENSED",
   "scripts": {

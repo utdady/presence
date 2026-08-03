@@ -5,6 +5,11 @@
 **/.env
 frontend/node_modules
 frontend/dist
+frontend/android
+frontend/plugins/**/node_modules
+frontend/plugins/**/android/build
+tools
+releases
 bot/identity_key.json
 credentials.local.json
 **/.DS_Store
