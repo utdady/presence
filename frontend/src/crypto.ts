@@ -67,6 +67,10 @@ export async function getOrCreateIdentityKeypair(): Promise<{
 /**
  * Derive a stable identity keypair from username+password so every device
  * that signs in as the same account shares one E2E identity.
+ *
+ * Uses Web Crypto PBKDF2 (available in browser + Capacitor WebView). The
+ * standard libsodium-wrappers build does not ship crypto_pwhash, which was
+ * causing "hash_length cannot be null or undefined" on login.
  */
 export async function deriveAndStoreIdentityKeypair(
   username: string,
@@ -74,19 +78,7 @@ export async function deriveAndStoreIdentityKeypair(
 ): Promise<{ publicKey: string; privateKey: string }> {
   assertReady()
   const uname = username.trim().toLowerCase()
-  const salt = sodium.crypto_generichash(
-    sodium.crypto_pwhash_SALTBYTES,
-    sodium.from_string(`presence-id-v1:${uname}`),
-    null,
-  )
-  const seed = sodium.crypto_pwhash(
-    sodium.crypto_box_SEEDBYTES,
-    password,
-    salt,
-    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
-    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
-    sodium.crypto_pwhash_ALG_DEFAULT,
-  )
+  const seed = await deriveIdentitySeed(uname, password)
   const kp = sodium.crypto_box_seed_keypair(seed)
   const record = {
     id: 'self' as const,
@@ -96,6 +88,42 @@ export async function deriveAndStoreIdentityKeypair(
   const db = await getDb()
   await db.put('identity', record, 'self')
   return { publicKey: record.publicKey, privateKey: record.privateKey }
+}
+
+/** 32-byte seed for crypto_box_seed_keypair from account credentials. */
+async function deriveIdentitySeed(
+  usernameLower: string,
+  password: string,
+): Promise<Uint8Array> {
+  const enc = new TextEncoder()
+  // Stable salt from username only (public); secret comes from password bits.
+  const salt = enc.encode(`presence-id-v1:${usernameLower}`)
+  if (!globalThis.crypto?.subtle) {
+    // Extremely old environments: fall back to Blake2b over salt||password.
+    const material = new Uint8Array(salt.length + enc.encode(password).length + 1)
+    material.set(salt, 0)
+    material[salt.length] = 0
+    material.set(enc.encode(password), salt.length + 1)
+    return sodium.crypto_generichash(32, material, null)
+  }
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: 120_000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256,
+  )
+  return new Uint8Array(bits)
 }
 
 /** X25519 shared secret via crypto_box_beforenm, then BLAKE2b-256 (HKDF-like). */
