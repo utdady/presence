@@ -141,8 +141,9 @@ function NativeNearbyUI({
       <p className="nearby-status">{call.status || 'Idle'}</p>
       {call.error && <p className="form-error">{call.error}</p>}
       <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Bluetooth only — no Wi‑Fi or internet needed. Keep Bluetooth on. Chat
-        and voice travel over Nearby Connections.
+        Bluetooth only — no Wi‑Fi or internet. Keep Bluetooth on (Wi‑Fi can stay
+        off). Allow “make visible” if Android asks. Chat and voice use encrypted
+        Bluetooth RFCOMM between phones.
       </p>
 
       {call.phase === 'idle' && (

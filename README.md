@@ -204,12 +204,14 @@ Keep exactly one user with `"role": "hub"`.
 ## Nearby (Bluetooth-only on Android)
 
 Offline 1:1 **encrypted chat and voice** between two Presence Android devices that
-are physically nearby. Discovery and all data use **Google Nearby Connections
-over Bluetooth** — **no Wi‑Fi and no internet** are required for the Nearby
+are physically nearby. Discovery and data use **Bluetooth Classic RFCOMM only** —
+**no Wi‑Fi, no Wi‑Fi Direct / hotspot upgrade, and no internet** for the Nearby
 session (sign in once beforehand so identity keys exist). Cellular and Wi‑Fi can
-stay off; keep **Bluetooth** on and grant location / Nearby permissions if asked.
+stay completely off; keep **Bluetooth** on. On Android 12+ you only need Bluetooth
+permissions; Android 6–11 may ask for Location so classic scan can work (not GPS
+tracking by Presence).
 
-Voice is sent as short encrypted audio chunks over the same Nearby payload channel
+Voice is sent as short encrypted audio chunks over the same RFCOMM stream
 (talkie-quality latency). Chat uses the same encrypted session.
 
 On **web / PC / iPhone browser**, peer Bluetooth is not available. The Nearby
@@ -252,8 +254,8 @@ Rebuild after UI/native changes with the same `npm run apk:debug` command.
 
 ### Build the Android app (Android Studio)
 
-Requirements: JDK 21+, Android SDK (or Android Studio). This repo can use a portable toolchain under `tools/` (gitignored). An Android device/emulator with Google
-Play services (Nearby Connections).
+Requirements: JDK 21+, Android SDK (or Android Studio). This repo can use a portable toolchain under `tools/` (gitignored). An Android device with Bluetooth.
+(No Google Play services required for Nearby RFCOMM.)
 
 ```bash
 cd frontend

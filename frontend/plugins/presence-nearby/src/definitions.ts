@@ -10,7 +10,7 @@ export interface NearbyMessageEvent {
 
 export interface PresenceNearbyPlugin {
   isAvailable(): Promise<{ available: boolean }>
-  /** Prompt Location + Bluetooth (+ Nearby Wi‑Fi) runtime permissions. */
+  /** Prompt Bluetooth (and Location on Android 6–11 for classic scan) permissions. */
   requestPermissions(): Promise<void>
   startAdvertising(options: { displayName: string }): Promise<void>
   startDiscovery(): Promise<void>

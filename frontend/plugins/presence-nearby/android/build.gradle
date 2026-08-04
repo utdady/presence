@@ -38,5 +38,4 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
-    implementation 'com.google.android.gms:play-services-nearby:19.3.0'
 }

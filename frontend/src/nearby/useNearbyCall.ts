@@ -331,7 +331,19 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
           setRemoteFingerprint(null)
           setMessages([])
           setPhase('scanning')
-          setStatus('Disconnected — still scanning')
+          setStatus('Disconnected — resuming Bluetooth scan…')
+          void (async () => {
+            try {
+              await PresenceNearby.startAdvertising({
+                displayName: optsRef.current.displayName,
+              })
+              await PresenceNearby.startDiscovery()
+              setStatus('Disconnected — still scanning')
+            } catch {
+              setStatus('Disconnected — tap Find nearby to scan again')
+              setPhase('idle')
+            }
+          })()
         }),
       )
       handles.push(
@@ -368,7 +380,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         setError(
           permErr instanceof Error
             ? permErr.message
-            : 'Location and Bluetooth permissions are required for Nearby',
+            : 'Bluetooth permission is required for Nearby',
         )
         setPhase('idle')
         return
@@ -406,15 +418,27 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const connectTo = useCallback(async (peer: NearbyPeerInfo) => {
     setError(null)
     setPhase('connecting')
-    setStatus(`Connecting to ${peer.name}…`)
+    setStatus(`Connecting to ${peer.name} over Bluetooth…`)
     try {
+      // Native stops discovery before RFCOMM connect.
       await PresenceNearby.connect({
         endpointId: peer.id,
         displayName: optsRef.current.displayName,
       })
+      setStatus(`Connected — exchanging keys…`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Connect failed')
       setPhase('scanning')
+      setStatus('Still scanning — try again, one phone taps Connect')
+      // Discovery was stopped for connect; resume advertise + scan.
+      try {
+        await PresenceNearby.startAdvertising({
+          displayName: optsRef.current.displayName,
+        })
+        await PresenceNearby.startDiscovery()
+      } catch {
+        /* ignore */
+      }
     }
   }, [])
 
