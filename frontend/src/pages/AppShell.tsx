@@ -14,7 +14,10 @@ import { ChatView } from '../components/ChatView'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { InvitesPanel } from '../components/InvitesPanel'
 import { MembersPanel } from '../components/MembersPanel'
+import { CallStage } from '../components/CallStage'
 import { NearbyCallPage } from '../nearby/NearbyCallPage'
+import { keyFingerprint } from '../crypto'
+import { usePeerCall } from '../hooks/usePeerCall'
 import { usePresenceSession } from '../usePresenceSession'
 
 export function AppShell() {
@@ -53,6 +56,7 @@ function PresenceInner({
   activePeerId: string | null
   setActivePeerId: (id: string | null) => void
 }) {
+  const callAudioRef = useRef<HTMLAudioElement>(null)
   const session = usePresenceSession({
     token,
     myId: user.id,
@@ -89,6 +93,24 @@ function PresenceInner({
   }, [])
 
   const selfImage = session.avatars[user.id]?.imageB64
+  const peerCall = usePeerCall({
+    peerId: activePeerId,
+    peerOnline: !!(activePeerId && session.peersById[activePeerId]?.online),
+    myFingerprint: keyFingerprint(publicKey),
+    sendSignal: session.sendCallSignal,
+    onRemoteSignal: session.onCallSignal,
+  })
+
+  useEffect(() => {
+    peerCall.setRemoteAudioEl(callAudioRef.current)
+  }, [peerCall])
+
+  // When an incoming call arrives from someone else, open their chat.
+  useEffect(() => {
+    if (peerCall.phase === 'incoming' && peerCall.remoteName) {
+      setActivePeerId(peerCall.remoteName)
+    }
+  }, [peerCall.phase, peerCall.remoteName, setActivePeerId])
 
   async function onPickAvatar(file: File | undefined) {
     if (!file) return
@@ -157,14 +179,20 @@ function PresenceInner({
     )
   }
 
-    const activePeer = activePeerId
+  const activePeer = activePeerId
     ? (session.peersById[activePeerId] ?? null)
     : null
+  const callPeerName =
+    (peerCall.remoteName &&
+      session.peersById[peerCall.remoteName]?.display_name) ||
+    activePeer?.display_name ||
+    'Peer'
 
   return (
     <div
       className={`app-frame app-frame--split${activePeer ? ' app-frame--chat-open' : ''}`}
     >
+      <audio ref={callAudioRef} autoPlay playsInline />
       <aside className="sidebar">
         {apkBannerVisible && apkUpdate && (
           <ApkUpdateBanner
@@ -407,6 +435,24 @@ function PresenceInner({
             onSendVoice={(audioB64, mime, durationMs) =>
               session.sendVoice(activePeer.id, audioB64, mime, durationMs)
             }
+            onSendFile={(file) => {
+              void session.sendFile(activePeer.id, file).catch((e) => {
+                window.alert(
+                  e instanceof Error ? e.message : 'Could not send file',
+                )
+              })
+            }}
+            onCancelFile={() => session.cancelFile(activePeer.id)}
+            fileTransfer={
+              session.fileTransfer?.peerId === activePeer.id
+                ? {
+                    name: session.fileTransfer.name,
+                    sent: session.fileTransfer.sent,
+                    total: session.fileTransfer.total,
+                  }
+                : null
+            }
+            onStartCall={() => void peerCall.startCall()}
             onConsumeSnap={(msgId) =>
               session.consumeSnap(activePeer.id, msgId)
             }
@@ -425,6 +471,17 @@ function PresenceInner({
           </div>
         )}
       </main>
+
+      <CallStage
+        open
+        phase={peerCall.phase}
+        peerName={callPeerName}
+        muted={peerCall.muted}
+        onAccept={() => void peerCall.acceptCall()}
+        onReject={peerCall.rejectCall}
+        onEnd={peerCall.endCall}
+        onToggleMute={peerCall.toggleMute}
+      />
     </div>
   )
 }

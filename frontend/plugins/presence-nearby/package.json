@@ -14,7 +14,13 @@
     "watch": "tsc --watch"
   },
   "peerDependencies": {
-    "@capacitor/core": ">=6.0.0"
+    "@capacitor/core": ">=6.0.0",
+    "@tauri-apps/api": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tauri-apps/api": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@capacitor/core": "^7.0.0",

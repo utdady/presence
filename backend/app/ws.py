@@ -186,7 +186,7 @@ class ConnectionManager:
         if not sent:
             return "undelivered"
         # Mirror to the sender's other devices so phone↔browser stay in sync.
-        if msg_type in ("msg", "snap", "voice", "reaction", "profile"):
+        if msg_type in ("msg", "snap", "voice", "reaction", "profile", "call", "file"):
             await self.send_json(from_id, message)
         return "ok"
 

@@ -35,6 +35,39 @@ export type NearbyPlainSignal =
       mime: string
       dataB64: string
     }
+  | {
+      type: 'voice-note'
+      id: string
+      mime: string
+      dataB64: string
+      durationMs: number
+      fromName: string
+      sentAt: number
+    }
+  | {
+      type: 'file-meta'
+      id: string
+      name: string
+      mime: string
+      size: number
+      totalChunks: number
+      fromName: string
+      sentAt: number
+    }
+  | {
+      type: 'file-chunk'
+      id: string
+      index: number
+      dataB64: string
+    }
+  | {
+      type: 'file-end'
+      id: string
+    }
+  | {
+      type: 'file-cancel'
+      id: string
+    }
 
 export interface NearbyChatMessage {
   id: string
@@ -42,8 +75,38 @@ export interface NearbyChatMessage {
   fromName: string
   sentAt: number
   mine: boolean
+  kind?: 'text' | 'voice' | 'file'
+  audio_b64?: string
+  audio_mime?: string
+  duration_ms?: number
+  file_name?: string
+  file_mime?: string
+  file_b64?: string
+  file_size?: number
 }
 
 export type NearbyWire =
   | NearbyHello
   | { type: 'enc'; payload: string }
+
+/** Map noisy native BT errors to short user copy. */
+export function friendlyNearbyError(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes('permission')) {
+    return 'Bluetooth permission needed. Enable it in system Settings.'
+  }
+  if (m.includes('8012') || m.includes('endpoint_io') || m.includes('io error')) {
+    return 'Connection dropped. Stay closer and try again — only one side taps Connect.'
+  }
+  if (m.includes('8007') || m.includes('bluetooth_error')) {
+    return 'Bluetooth glitch. Toggle Bluetooth off/on, then Find nearby again.'
+  }
+  if (m.includes('already') && m.includes('advertis')) {
+    return 'Still starting Bluetooth… try Stop, then Find nearby.'
+  }
+  if (m.includes('connect failed') || m.includes('rfcomm')) {
+    return 'Could not connect. Keep both on Find nearby; connect from the device that sees the other.'
+  }
+  if (raw.length > 120) return `${raw.slice(0, 117)}…`
+  return raw
+}

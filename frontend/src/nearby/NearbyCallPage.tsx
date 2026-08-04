@@ -8,6 +8,8 @@ import { nearbyTransport, type NearbyTransport } from './capability'
 import { useLanNearbyCall } from './useLanNearbyCall'
 import { useNearbyCall } from './useNearbyCall'
 import { PermissionPrime } from '../components/PermissionPrime'
+import { CallStage } from '../components/CallStage'
+import { VoiceBubble } from '../components/VoiceBubble'
 
 interface Props {
   userId: string
@@ -64,6 +66,7 @@ function NativeNearbyUI({
   const [nearbyPrime, setNearbyPrime] = useState(false)
   const [micPrime, setMicPrime] = useState(false)
   const pendingMicAction = useRef<null | (() => void)>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
@@ -123,7 +126,7 @@ function NativeNearbyUI({
   }
 
   return (
-    <div className="nearby-page">
+    <div className="nearby-page nearby-page--chat">
       <header className="nearby-header">
         <button
           type="button"
@@ -135,19 +138,35 @@ function NativeNearbyUI({
         >
           Back
         </button>
-        <h1>Nearby</h1>
+        <h1>
+          {CHAT_PHASES.has(call.phase)
+            ? (call.remoteName ?? 'Nearby')
+            : 'Nearby'}
+        </h1>
+        {call.phase === 'ready' && (
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => void withMicPrime(() => void call.startCall())}
+          >
+            Call
+          </button>
+        )}
       </header>
       <audio ref={audioRef} autoPlay playsInline />
       <p className="nearby-status">{call.status || 'Idle'}</p>
+      {call.catchingUp && (
+        <p className="nearby-note">Catching up on call audio…</p>
+      )}
       {call.error && <p className="form-error">{call.error}</p>}
-      <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Bluetooth only — no Wi‑Fi or internet. Keep Bluetooth on (Wi‑Fi can stay
-        off). Allow “make visible” if Android asks. Chat and voice use encrypted
-        Bluetooth RFCOMM between phones.
-      </p>
 
       {call.phase === 'idle' && (
         <div className="nearby-actions">
+          <p className="nearby-note" style={{ padding: '0 0.25rem' }}>
+            Bluetooth only — no Wi‑Fi or internet. You appear as{' '}
+            <strong>Presence/{displayName}</strong>. Keep Bluetooth on. If only
+            one side sees the other, connect from that side.
+          </p>
           <button type="button" onClick={() => void onFindNearby()}>
             Find nearby
           </button>
@@ -156,6 +175,9 @@ function NativeNearbyUI({
 
       {(call.phase === 'scanning' || call.phase === 'connecting') && (
         <div className="nearby-panel">
+          <p className="nearby-note">
+            Visible as Presence/{displayName}. Only one side taps Connect.
+          </p>
           <ul className="nearby-peer-list">
             {call.peers.map((peer) => (
               <li key={peer.id}>
@@ -185,27 +207,50 @@ function NativeNearbyUI({
         </div>
       )}
 
-      <CallControls
-        call={{
-          phase: call.phase,
-          remoteName: call.remoteName,
-          remoteFingerprint: call.remoteFingerprint,
-          muted: call.muted,
-          startCall: () => void withMicPrime(() => void call.startCall()),
-          acceptCall: () => void withMicPrime(() => void call.acceptCall()),
-          rejectCall: call.rejectCall,
-          endCall: call.endCall,
-          toggleMute: call.toggleMute,
-        }}
-        bluetooth
-      />
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}
           peerName={call.remoteName}
+          fingerprint={call.remoteFingerprint}
+          recordingNote={call.recordingNote}
+          fileTransfer={call.fileTransfer}
           onSend={(text) => void call.sendChat(text)}
+          onStartVoice={() =>
+            void withMicPrime(() => void call.startVoiceNote())
+          }
+          onStopVoice={() => void call.stopVoiceNote()}
+          onCancelVoice={call.cancelVoiceNote}
+          onPickFile={() => fileRef.current?.click()}
+          onCancelFile={call.cancelFile}
         />
       )}
+      <input
+        ref={fileRef}
+        type="file"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f) void call.sendFile(f)
+        }}
+      />
+
+      <CallStage
+        open
+        phase={call.phase}
+        peerName={call.remoteName ?? 'Peer'}
+        subtitle={
+          call.remoteFingerprint
+            ? `Key ${call.remoteFingerprint}`
+            : 'Bluetooth'
+        }
+        muted={call.muted}
+        catchingUp={call.catchingUp}
+        onAccept={() => void withMicPrime(() => void call.acceptCall())}
+        onReject={() => void call.rejectCall()}
+        onEnd={() => void call.endCall()}
+        onToggleMute={call.toggleMute}
+      />
     </div>
   )
 }
@@ -258,7 +303,7 @@ function LanNearbyUI({
   }
 
   return (
-    <div className="nearby-page">
+    <div className="nearby-page nearby-page--chat">
       <header className="nearby-header">
         <button
           type="button"
@@ -270,7 +315,20 @@ function LanNearbyUI({
         >
           Back
         </button>
-        <h1>Nearby</h1>
+        <h1>
+          {CHAT_PHASES.has(call.phase)
+            ? (call.remoteName ?? 'Nearby')
+            : 'Nearby'}
+        </h1>
+        {call.phase === 'ready' && (
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => void withMicPrime(() => void call.startCall())}
+          >
+            Call
+          </button>
+        )}
       </header>
       <audio ref={audioRef} autoPlay playsInline />
       <p className="nearby-status">{call.status || 'Idle'}</p>
@@ -281,13 +339,8 @@ function LanNearbyUI({
           <div className="nearby-cta">
             <p className="empty-state-lead">Bluetooth Nearby</p>
             <p className="nearby-note">
-              Offline chat and voice over Bluetooth need the Android app. Install
-              the sideload APK, sign in once, then open Nearby → Find nearby.
-              Browsers cannot do peer Bluetooth.
-            </p>
-            <p className="nearby-note">
-              Build: <code>cd frontend && npm run apk:debug</code> →{' '}
-              <code>releases/presence-debug.apk</code>
+              Offline Bluetooth chat needs the Android APK or Windows desktop
+              app. This browser can only use an internet room as a fallback.
             </p>
           </div>
 
@@ -297,15 +350,14 @@ function LanNearbyUI({
             onClick={() => setShowOnlineRooms((v) => !v)}
           >
             {showOnlineRooms
-              ? 'Hide online rooms'
-              : 'Online room (needs internet)'}
+              ? 'Hide internet fallback'
+              : 'Need internet fallback?'}
           </button>
 
           {showOnlineRooms && (
             <>
               <p className="nearby-note">
-                Room codes use the Presence server for signaling. They are not
-                offline Bluetooth.
+                Room codes need the Presence server — not offline Bluetooth.
               </p>
               <button type="button" onClick={() => void call.createRoom()}>
                 Create room
@@ -344,135 +396,61 @@ function LanNearbyUI({
         </div>
       )}
 
-      <CallControls
-        call={{
-          phase: call.phase,
-          remoteName: call.remoteName,
-          remoteFingerprint: call.remoteFingerprint,
-          muted: call.muted,
-          startCall: () => void withMicPrime(() => void call.startCall()),
-          acceptCall: () => void withMicPrime(() => void call.acceptCall()),
-          rejectCall: call.rejectCall,
-          endCall: call.endCall,
-          toggleMute: call.toggleMute,
-          leaveRoom: call.leaveRoom,
-        }}
-        showLeave
-      />
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}
           peerName={call.remoteName}
+          fingerprint={call.remoteFingerprint}
           onSend={call.sendChat}
+          onLeave={call.leaveRoom}
         />
       )}
+
+      <CallStage
+        open
+        phase={call.phase}
+        peerName={call.remoteName ?? 'Peer'}
+        subtitle={
+          call.remoteFingerprint
+            ? `Key ${call.remoteFingerprint}`
+            : 'Online room'
+        }
+        muted={call.muted}
+        onAccept={() => void withMicPrime(() => void call.acceptCall())}
+        onReject={() => void call.rejectCall()}
+        onEnd={() => void call.endCall()}
+        onToggleMute={call.toggleMute}
+      />
     </div>
-  )
-}
-
-function CallControls({
-  call,
-  showLeave,
-  bluetooth,
-}: {
-  call: {
-    phase: string
-    remoteName: string | null
-    remoteFingerprint: string | null
-    muted: boolean
-    startCall: () => void | Promise<void>
-    acceptCall: () => void | Promise<void>
-    rejectCall: () => void
-    endCall: () => void
-    toggleMute: () => void
-    leaveRoom?: () => void
-  }
-  showLeave?: boolean
-  bluetooth?: boolean
-}) {
-  return (
-    <>
-      {call.phase === 'ready' && (
-        <div className="nearby-panel nearby-ready">
-          <p className="empty-state-lead">{call.remoteName ?? 'Peer'}</p>
-          {call.remoteFingerprint && (
-            <p className="nearby-fingerprint">Key {call.remoteFingerprint}</p>
-          )}
-          <p className="nearby-note">
-            {bluetooth
-              ? 'Chat below anytime. Call uses Bluetooth audio chunks.'
-              : 'Chat below anytime. Call uses peer-to-peer audio.'}
-          </p>
-          <div className="nearby-actions-row">
-            <button type="button" onClick={() => void call.startCall()}>
-              Call
-            </button>
-            {showLeave && call.leaveRoom && (
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={call.leaveRoom}
-              >
-                Leave
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {call.phase === 'outgoing' && (
-        <div className="nearby-panel nearby-ready">
-          <p className="empty-state-lead">Calling…</p>
-          <button type="button" onClick={call.endCall}>
-            Cancel
-          </button>
-        </div>
-      )}
-
-      {call.phase === 'incoming' && (
-        <div className="nearby-panel nearby-ready">
-          <p className="empty-state-lead">
-            Incoming · {call.remoteName ?? 'Someone'}
-          </p>
-          <div className="nearby-actions-row">
-            <button type="button" onClick={() => void call.acceptCall()}>
-              Accept
-            </button>
-            <button type="button" className="ghost-btn" onClick={call.rejectCall}>
-              Decline
-            </button>
-          </div>
-        </div>
-      )}
-
-      {call.phase === 'in_call' && (
-        <div className="nearby-panel nearby-ready">
-          <p className="empty-state-lead">
-            In call · {call.remoteName ?? 'Peer'}
-            {bluetooth ? ' · BT' : ''}
-          </p>
-          <div className="nearby-actions-row">
-            <button type="button" onClick={call.toggleMute}>
-              {call.muted ? 'Unmute' : 'Mute'}
-            </button>
-            <button type="button" onClick={call.endCall}>
-              End
-            </button>
-          </div>
-        </div>
-      )}
-    </>
   )
 }
 
 function NearbyChatPanel({
   messages,
   peerName,
+  fingerprint,
+  recordingNote,
+  fileTransfer,
   onSend,
+  onStartVoice,
+  onStopVoice,
+  onCancelVoice,
+  onPickFile,
+  onCancelFile,
+  onLeave,
 }: {
   messages: NearbyChatMessage[]
   peerName: string | null
+  fingerprint?: string | null
+  recordingNote?: boolean
+  fileTransfer?: { name: string; sent: number; total: number } | null
   onSend: (text: string) => void
+  onStartVoice?: () => void
+  onStopVoice?: () => void
+  onCancelVoice?: () => void
+  onPickFile?: () => void
+  onCancelFile?: () => void
+  onLeave?: () => void
 }) {
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -492,10 +470,22 @@ function NearbyChatPanel({
   }
 
   return (
-    <div className="nearby-chat">
-      <p className="nearby-chat-label">
-        Chat{peerName ? ` · ${peerName}` : ''}
-      </p>
+    <div className="nearby-chat nearby-chat--main">
+      <div className="nearby-chat-toolbar">
+        <div>
+          <p className="nearby-chat-label">
+            {peerName ? peerName : 'Chat'}
+          </p>
+          {fingerprint && (
+            <p className="nearby-fingerprint">Key {fingerprint}</p>
+          )}
+        </div>
+        {onLeave && (
+          <button type="button" className="ghost-btn" onClick={onLeave}>
+            Leave
+          </button>
+        )}
+      </div>
       <div className="nearby-chat-list" ref={listRef}>
         {messages.length === 0 ? (
           <p className="nearby-note">Messages only while you stay connected.</p>
@@ -508,12 +498,78 @@ function NearbyChatPanel({
               {!m.mine && (
                 <span className="nearby-chat-from">{m.fromName}</span>
               )}
-              <p>{m.text}</p>
+              {m.kind === 'voice' && m.audio_b64 && m.audio_mime ? (
+                <VoiceBubble
+                  audioB64={m.audio_b64}
+                  mime={m.audio_mime}
+                  durationMs={m.duration_ms ?? 1000}
+                />
+              ) : m.kind === 'file' && m.file_b64 ? (
+                <a
+                  className="nearby-file-link"
+                  href={`data:${m.file_mime || 'application/octet-stream'};base64,${m.file_b64}`}
+                  download={m.file_name || 'file'}
+                >
+                  {m.file_name || 'File'}
+                  {m.file_size != null
+                    ? ` (${Math.round(m.file_size / 1024)} KB)`
+                    : ''}
+                </a>
+              ) : (
+                <p>{m.text}</p>
+              )}
             </div>
           ))
         )}
       </div>
+      {fileTransfer && (
+        <div className="nearby-chat-transfer">
+          <span>
+            Sending {fileTransfer.name} (
+            {Math.min(
+              100,
+              Math.round(
+                (fileTransfer.sent / Math.max(1, fileTransfer.total)) * 100,
+              ),
+            )}
+            %)
+          </span>
+          {onCancelFile && (
+            <button type="button" className="ghost-btn" onClick={onCancelFile}>
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
       <form className="nearby-chat-compose" onSubmit={submit}>
+        {onPickFile && (
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={onPickFile}
+            aria-label="Attach file"
+            disabled={!!fileTransfer}
+          >
+            ＋
+          </button>
+        )}
+        {onStartVoice && onStopVoice && (
+          <button
+            type="button"
+            className={`ghost-btn${recordingNote ? ' is-recording' : ''}`}
+            onClick={() => {
+              if (recordingNote) void onStopVoice()
+              else void onStartVoice()
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              onCancelVoice?.()
+            }}
+            aria-label={recordingNote ? 'Stop voice note' : 'Record voice note'}
+          >
+            {recordingNote ? '■' : '🎤'}
+          </button>
+        )}
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

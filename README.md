@@ -201,23 +201,47 @@ Keep exactly one user with `"role": "hub"`.
 - Run `python bot/main.py`, chat with Dummy from hub, then Ctrl+C the bot to see offline transition
 
 
-## Nearby (Bluetooth-only on Android)
+## Nearby (Bluetooth-only)
 
-Offline 1:1 **encrypted chat and voice** between two Presence Android devices that
+Offline 1:1 **encrypted chat and voice** between Presence devices that
 are physically nearby. Discovery and data use **Bluetooth Classic RFCOMM only** —
 **no Wi‑Fi, no Wi‑Fi Direct / hotspot upgrade, and no internet** for the Nearby
 session (sign in once beforehand so identity keys exist). Cellular and Wi‑Fi can
-stay completely off; keep **Bluetooth** on. On Android 12+ you only need Bluetooth
-permissions; Android 6–11 may ask for Location so classic scan can work (not GPS
-tracking by Presence).
+stay completely off; keep **Bluetooth** on.
 
-Voice is sent as short encrypted audio chunks over the same RFCOMM stream
-(talkie-quality latency). Chat uses the same encrypted session.
+| Client | Nearby offline BT |
+|--------|-------------------|
+| **Android APK** | Yes (Capacitor plugin) |
+| **Windows desktop (Tauri)** | Yes (same RFCOMM UUID / framing as Android) |
+| **Browser alone** | No — optional **online rooms** need the Presence server |
 
-On **web / PC / iPhone browser**, peer Bluetooth is not available. The Nearby
-screen shows an install CTA for the Android APK. Optional **online rooms**
-(room codes) still exist as a fallback: they need the Presence server on the
-internet for signaling and are **not** offline Bluetooth.
+On Android 12+ you only need Bluetooth permissions; Android 6–11 may ask for
+Location so classic scan can work (not GPS tracking by Presence).
+
+Voice is short encrypted audio chunks over the same RFCOMM stream
+(talkie-quality). Chat uses the same encrypted session.
+
+Phone↔phone and **Windows desktop↔phone** use the same protocol.
+
+### Presence desktop (Windows)
+
+Requires **Rust** (stable) + Visual Studio C++ build tools, Node 22+.
+
+```bash
+cd frontend
+npm install
+# Dev (starts Vite + opens the desktop shell)
+npm run desktop:dev
+
+# Release installer / EXE under src-tauri/target/release/bundle/
+npm run desktop:build
+```
+
+Bluetooth: enable system Bluetooth, then Nearby → **Find nearby**. Pair with
+an Android device also scanning (APK build that includes RFCOMM Nearby).
+
+Native code: `frontend/src-tauri/` (commands + `nearby` RFCOMM module).
+
 
 ### Build a sideloadable APK (no Play Store)
 

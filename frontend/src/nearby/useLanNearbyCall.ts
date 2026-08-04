@@ -5,8 +5,7 @@ import {
   decryptJson,
   keyFingerprint,
 } from '../crypto'
-import { getToken, apiUrl, PROD_ORIGIN } from '../api'
-import { Capacitor } from '@capacitor/core'
+import { getToken, apiUrl, PROD_ORIGIN, isPackedClient } from '../api'
 import type {
   NearbyCallPhase,
   NearbyChatMessage,
@@ -23,7 +22,7 @@ export interface UseLanNearbyCallOptions {
 }
 
 function lanWsUrl(code: string, token: string): string {
-  if (Capacitor.isNativePlatform()) {
+  if (isPackedClient()) {
     const u = new URL(PROD_ORIGIN)
     const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${proto}//${u.host}/nearby/lan/ws?token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}`
@@ -52,9 +51,11 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
   const ignoreOfferRef = useRef(false)
   const optsRef = useRef(opts)
   optsRef.current = opts
+  const mediaGenRef = useRef(0)
   // hello exchanged each peer-ready
 
   const cleanupMedia = useCallback(() => {
+    mediaGenRef.current += 1
     pcRef.current?.close()
     pcRef.current = null
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -104,10 +105,15 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
       audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track])
       void audio.play().catch(() => {})
     }
+    const gen = (mediaGenRef.current += 1)
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: false,
     })
+    if (gen !== mediaGenRef.current) {
+      stream.getTracks().forEach((t) => t.stop())
+      return pc
+    }
     localStreamRef.current = stream
     for (const track of stream.getTracks()) {
       pc.addTrack(track, stream)

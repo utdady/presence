@@ -51,12 +51,15 @@ export default defineConfig({
         ],
         runtimeCaching: [],
       },
-      // Register only in the browser — Capacitor WebView must not get a SW.
+      // Register only in the browser — Capacitor WebView / Tauri must not get a SW.
       injectRegister: false,
     }),
   ],
+  // Prevent vite from obscuring rust errors when Tauri runs.
+  clearScreen: false,
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       '/auth': 'http://127.0.0.1:8000',
       '/invites': 'http://127.0.0.1:8000',
@@ -87,4 +90,5 @@ export default defineConfig({
       },
     },
   },
+  envPrefix: ['VITE_', 'TAURI_'],
 })

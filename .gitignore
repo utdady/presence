@@ -28,3 +28,6 @@ frontend/android/capacitor-cordova-android-plugins/
 frontend/android/local.properties
 frontend/plugins/**/node_modules/
 
+# Tauri / Rust desktop
+frontend/src-tauri/target/
+

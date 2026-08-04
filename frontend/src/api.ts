@@ -1,15 +1,25 @@
 import { Capacitor } from '@capacitor/core'
 
-/** Production origin — used for absolute API calls inside the Android WebView. */
+/** Production origin — used for absolute API calls inside the Android WebView and Tauri desktop. */
 export const PROD_ORIGIN = 'https://presence-addy.fly.dev'
+
+/** Capacitor WebView or Tauri shell — not the public website (no same-origin API). */
+export function isPackedClient(): boolean {
+  if (Capacitor.isNativePlatform()) return true
+  return (
+    typeof window !== 'undefined' &&
+    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+  )
+}
 
 /**
  * Relative paths work in the browser (Vite proxy / same origin on Fly).
- * On native, always hit production so login/API never depend on WebView origin quirks.
+ * On Android / Tauri desktop, always hit production so login/API never depend
+ * on asset:// or tauri.localhost origin quirks.
  */
 export function apiUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`
-  if (Capacitor.isNativePlatform()) {
+  if (isPackedClient()) {
     return `${PROD_ORIGIN}${p}`
   }
   return p
@@ -102,7 +112,7 @@ export async function fetchPeers(
 }
 
 export function wsUrl(token: string): string {
-  if (Capacitor.isNativePlatform()) {
+  if (isPackedClient()) {
     const u = new URL(PROD_ORIGIN)
     const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${proto}//${u.host}/ws?token=${encodeURIComponent(token)}`

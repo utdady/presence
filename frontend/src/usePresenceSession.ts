@@ -12,7 +12,14 @@ import {
   encryptPayload,
   newMsgId,
 } from './crypto'
-import type { ChatMessage, SnapTimerSec, UserPublic, WsIncoming } from './types'
+import type {
+  ChatMessage,
+  PlainPayload,
+  SnapTimerSec,
+  UserPublic,
+  WsIncoming,
+} from './types'
+import type { HubCallSignal } from './hooks/usePeerCall'
 
 const REACTIONS = ['👍', '❤️', '😂'] as const
 
@@ -42,6 +49,13 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   const [avatars, setAvatars] = useState<AvatarMap>({})
   const [connected, setConnected] = useState(false)
   const [leavingPeer, setLeavingPeer] = useState<string | null>(null)
+  const [fileTransfer, setFileTransfer] = useState<{
+    peerId: string
+    msgId: string
+    name: string
+    sent: number
+    total: number
+  } | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const privateKeyRef = useRef(privateKey)
@@ -50,6 +64,20 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   const peerKeysRef = useRef(peerKeys)
   const activePeerIdRef = useRef(activePeerId)
   const avatarsRef = useRef(avatars)
+  const callHandlersRef = useRef(
+    new Set<(from: string, signal: HubCallSignal) => void>(),
+  )
+  const fileAbortRef = useRef<{
+    peerId: string
+    msgId: string
+    cancel: boolean
+  } | null>(null)
+  const fileBufRef = useRef(
+    new Map<
+      string,
+      { chunks: (string | undefined)[]; meta: Extract<PlainPayload, { kind: 'file-meta' }>; peerId: string; from: string }
+    >(),
+  )
   privateKeyRef.current = privateKey
   sessionKeysRef.current = sessionKeys
   peerKeysRef.current = peerKeys
@@ -263,7 +291,9 @@ export function usePresenceSession(opts: UsePresenceOptions) {
           data.type === 'reaction' ||
           data.type === 'snap' ||
           data.type === 'voice' ||
-          data.type === 'profile'
+          data.type === 'profile' ||
+          data.type === 'call' ||
+          data.type === 'file'
         ) {
           // Own-device echo: same ciphertext mirrored so phone↔browser stay in sync.
           const isEcho = data.from === myIdRef.current
@@ -411,6 +441,95 @@ export function usePresenceSession(opts: UsePresenceOptions) {
             setAvatars((prev) => ({
               ...prev,
               [peerId]: recordToMapEntry(record),
+            }))
+          } else if (
+            plain.kind === 'call-offer' ||
+            plain.kind === 'call-answer' ||
+            plain.kind === 'call-reject' ||
+            plain.kind === 'call-end' ||
+            plain.kind === 'webrtc-signal'
+          ) {
+            if (isEcho) return
+            for (const h of callHandlersRef.current) {
+              h(peerId, plain as HubCallSignal)
+            }
+          } else if (plain.kind === 'file-meta') {
+            fileBufRef.current.set(plain.msg_id, {
+              chunks: new Array(plain.totalChunks),
+              meta: plain,
+              peerId,
+              from: isEcho ? myIdRef.current : peerId,
+            })
+            setMessages((prev) => {
+              const list = prev[peerId] ?? []
+              if (list.some((m) => m.id === plain.msg_id)) return prev
+              return {
+                ...prev,
+                [peerId]: [
+                  ...list,
+                  {
+                    id: plain.msg_id,
+                    from: isEcho ? myIdRef.current : peerId,
+                    text: `Receiving ${plain.name}…`,
+                    status: 'sent',
+                    reactions: {},
+                    kind: 'file',
+                    file_name: plain.name,
+                    file_mime: plain.mime,
+                    file_size: plain.size,
+                  },
+                ],
+              }
+            })
+          } else if (plain.kind === 'file-chunk') {
+            const buf = fileBufRef.current.get(plain.msg_id)
+            if (buf) buf.chunks[plain.index] = plain.data_b64
+          } else if (plain.kind === 'file-end') {
+            const buf = fileBufRef.current.get(plain.msg_id)
+            if (!buf) return
+            fileBufRef.current.delete(plain.msg_id)
+            if (buf.chunks.some((c) => !c)) {
+              setMessages((prev) => ({
+                ...prev,
+                [peerId]: (prev[peerId] ?? []).map((m) =>
+                  m.id === plain.msg_id
+                    ? { ...m, text: `Failed: ${buf.meta.name}`, status: 'failed' }
+                    : m,
+                ),
+              }))
+              return
+            }
+            const dataB64 = buf.chunks.join('')
+            setMessages((prev) => ({
+              ...prev,
+              [peerId]: (prev[peerId] ?? []).map((m) =>
+                m.id === plain.msg_id
+                  ? {
+                      ...m,
+                      text: buf.meta.name,
+                      file_b64: dataB64,
+                      file_name: buf.meta.name,
+                      file_mime: buf.meta.mime,
+                      file_size: buf.meta.size,
+                      status: 'sent',
+                    }
+                  : m,
+              ),
+            }))
+            if (!isEcho && activePeerIdRef.current !== peerId) {
+              setUnread((prev) =>
+                prev[peerId] ? prev : { ...prev, [peerId]: true },
+              )
+            }
+          } else if (plain.kind === 'file-cancel') {
+            fileBufRef.current.delete(plain.msg_id)
+            setMessages((prev) => ({
+              ...prev,
+              [peerId]: (prev[peerId] ?? []).map((m) =>
+                m.id === plain.msg_id
+                  ? { ...m, text: 'Transfer cancelled', status: 'failed' }
+                  : m,
+              ),
             }))
           }
         }
@@ -619,6 +738,180 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     }
   }, [myId, sendRaw])
 
+  const sendCallSignal = useCallback(
+    (peerId: string, signal: HubCallSignal) => {
+      const key = sessionKeysRef.current[peerId]
+      if (!key) return false
+      const payload = encryptPayload(key, signal)
+      return sendRaw({ type: 'call', to: peerId, payload })
+    },
+    [sendRaw],
+  )
+
+  const onCallSignal = useCallback(
+    (handler: (from: string, signal: HubCallSignal) => void) => {
+      callHandlersRef.current.add(handler)
+      return () => {
+        callHandlersRef.current.delete(handler)
+      }
+    },
+    [],
+  )
+
+  const FILE_CHUNK = 48_000
+  const FILE_MAX = 2_500_000
+
+  const cancelFile = useCallback(
+    (peerId?: string) => {
+      const cur = fileAbortRef.current
+      if (!cur || cur.cancel) return
+      if (peerId && cur.peerId !== peerId) return
+      cur.cancel = true
+      const key = sessionKeysRef.current[cur.peerId]
+      if (key) {
+        sendRaw({
+          type: 'file',
+          to: cur.peerId,
+          payload: encryptPayload(key, {
+            kind: 'file-cancel',
+            msg_id: cur.msgId,
+          }),
+          msg_id: cur.msgId,
+        })
+      }
+      setMessages((prev) => ({
+        ...prev,
+        [cur.peerId]: (prev[cur.peerId] ?? []).map((m) =>
+          m.id === cur.msgId
+            ? { ...m, text: 'Transfer cancelled', status: 'failed' }
+            : m,
+        ),
+      }))
+      setFileTransfer(null)
+    },
+    [sendRaw],
+  )
+
+  const sendFile = useCallback(
+    async (peerId: string, file: File) => {
+      const key = sessionKeys[peerId]
+      if (!key) return
+      if (file.size > FILE_MAX) {
+        throw new Error('File too large (max ~2.5 MB while both online)')
+      }
+      if (fileAbortRef.current) {
+        throw new Error('Another transfer is in progress')
+      }
+      const buf = new Uint8Array(await file.arrayBuffer())
+      let binary = ''
+      const step = 0x8000
+      for (let i = 0; i < buf.length; i += step) {
+        binary += Array.from(buf.subarray(i, i + step), (b) =>
+          String.fromCharCode(b),
+        ).join('')
+      }
+      const dataB64 = btoa(binary)
+      const msg_id = newMsgId()
+      const totalChunks = Math.ceil(dataB64.length / FILE_CHUNK) || 1
+      const meta = {
+        kind: 'file-meta' as const,
+        msg_id,
+        name: file.name.slice(0, 180),
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+        totalChunks,
+      }
+      fileAbortRef.current = { peerId, msgId: msg_id, cancel: false }
+      setFileTransfer({
+        peerId,
+        msgId: msg_id,
+        name: file.name,
+        sent: 0,
+        total: totalChunks,
+      })
+      setMessages((prev) => ({
+        ...prev,
+        [peerId]: [
+          ...(prev[peerId] ?? []),
+          {
+            id: msg_id,
+            from: myId,
+            text: `Sending ${file.name}…`,
+            status: 'sending',
+            reactions: {},
+            kind: 'file',
+            file_name: file.name,
+            file_mime: file.type || 'application/octet-stream',
+            file_size: file.size,
+          },
+        ],
+      }))
+      sendRaw({
+        type: 'file',
+        to: peerId,
+        payload: encryptPayload(key, meta),
+        msg_id,
+      })
+      for (let i = 0; i < totalChunks; i++) {
+        const cur = fileAbortRef.current
+        if (!cur || cur.msgId !== msg_id || cur.cancel) {
+          fileAbortRef.current = null
+          setFileTransfer(null)
+          return
+        }
+        const piece = dataB64.slice(i * FILE_CHUNK, (i + 1) * FILE_CHUNK)
+        sendRaw({
+          type: 'file',
+          to: peerId,
+          payload: encryptPayload(key, {
+            kind: 'file-chunk',
+            msg_id,
+            index: i,
+            data_b64: piece,
+          }),
+          msg_id,
+        })
+        setFileTransfer({
+          peerId,
+          msgId: msg_id,
+          name: file.name,
+          sent: i + 1,
+          total: totalChunks,
+        })
+        // Yield so Cancel can land between chunks.
+        await new Promise((r) => setTimeout(r, 0))
+      }
+      const cur = fileAbortRef.current
+      if (!cur || cur.msgId !== msg_id || cur.cancel) {
+        fileAbortRef.current = null
+        setFileTransfer(null)
+        return
+      }
+      const sent = sendRaw({
+        type: 'file',
+        to: peerId,
+        payload: encryptPayload(key, { kind: 'file-end', msg_id }),
+        msg_id,
+      })
+      fileAbortRef.current = null
+      setFileTransfer(null)
+      setMessages((prev) => ({
+        ...prev,
+        [peerId]: (prev[peerId] ?? []).map((m) =>
+          m.id === msg_id
+            ? {
+                ...m,
+                text: file.name,
+                status: sent ? 'sent' : 'failed',
+                file_b64: dataB64,
+              }
+            : m,
+        ),
+      }))
+    },
+    [sessionKeys, myId, sendRaw],
+  )
+
   const peerList = Object.values(peers).sort((a, b) =>
     a.display_name.localeCompare(b.display_name),
   )
@@ -636,6 +929,11 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     sendMessage,
     sendSnap,
     sendVoice,
+    sendFile,
+    cancelFile,
+    fileTransfer,
+    sendCallSignal,
+    onCallSignal,
     consumeSnap,
     sendTyping,
     sendReaction,

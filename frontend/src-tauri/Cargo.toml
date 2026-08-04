@@ -1,0 +1,38 @@
+[workspace]
+members = ["."]
+resolver = "2"
+
+[package]
+name = "presence-desktop"
+version = "0.1.0"
+description = "Presence desktop shell with Bluetooth Nearby"
+authors = ["Presence"]
+edition = "2021"
+
+[lib]
+name = "presence_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Networking_WinSock",
+  "Win32_Devices_Bluetooth",
+] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true

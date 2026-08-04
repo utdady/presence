@@ -30,6 +30,14 @@ interface ChatViewProps {
   onSend: (text: string) => void
   onSendSnap: (imageB64: string, timerSec: SnapTimerSec) => void
   onSendVoice: (audioB64: string, mime: string, durationMs: number) => void
+  onSendFile?: (file: File) => void
+  onCancelFile?: () => void
+  fileTransfer?: {
+    name: string
+    sent: number
+    total: number
+  } | null
+  onStartCall?: () => void
   onConsumeSnap: (msgId: string) => void
   onTyping: (active: boolean) => void
   onReact: (msgId: string, emoji: string) => void
@@ -48,11 +56,16 @@ export function ChatView({
   onSend,
   onSendSnap,
   onSendVoice,
+  onSendFile,
+  onCancelFile,
+  fileTransfer,
+  onStartCall,
   onConsumeSnap,
   onTyping,
   onReact,
   onBack,
 }: ChatViewProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [text, setText] = useState('')
   const [activeMsg, setActiveMsg] = useState<string | null>(null)
   const [capturing, setCapturing] = useState(false)
@@ -74,6 +87,7 @@ export function ChatView({
   const maxTimerRef = useRef<number | undefined>(undefined)
   const tickRef = useRef<number | undefined>(undefined)
   const mimeRef = useRef('audio/webm')
+  const recGenRef = useRef(0)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -83,6 +97,7 @@ export function ChatView({
     return () => {
       const id = viewingSnapIdRef.current
       if (id) onConsumeSnap(id)
+      recGenRef.current += 1
       stopMicTracks()
     }
   }, [onConsumeSnap])
@@ -132,8 +147,13 @@ export function ChatView({
       return
     }
     mimeRef.current = mime
+    const gen = ++recGenRef.current
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (gen !== recGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
       streamRef.current = stream
       const rec = new MediaRecorder(stream, { mimeType: mime })
       chunksRef.current = []
@@ -156,9 +176,11 @@ export function ChatView({
         stopRecording()
       }, VOICE_MAX_MS)
     } catch {
-      stopMicTracks()
-      setRecError('Microphone access denied or unavailable')
-      setRecording(false)
+      if (gen === recGenRef.current) {
+        stopMicTracks()
+        setRecError('Microphone access denied or unavailable')
+        setRecording(false)
+      }
     }
   }
 
@@ -173,6 +195,7 @@ export function ChatView({
   }
 
   async function cancelRecording() {
+    recGenRef.current += 1
     const rec = mediaRecorderRef.current
     if (rec && rec.state !== 'inactive') {
       rec.onstop = null
@@ -298,6 +321,16 @@ export function ChatView({
                 : 'Unavailable'}
           </p>
         </div>
+        {onStartCall && online && canEncrypt && !unavailable && (
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={onStartCall}
+            aria-label="Start call"
+          >
+            Call
+          </button>
+        )}
       </header>
 
       <div className="chat-body">
@@ -316,6 +349,7 @@ export function ChatView({
               const mine = m.from === me.id
               const isSnap = m.kind === 'snap'
               const isVoice = m.kind === 'voice'
+              const isFile = m.kind === 'file'
               return (
                 <li
                   key={m.id}
@@ -325,7 +359,7 @@ export function ChatView({
                       openSnap(m)
                       return
                     }
-                    if (isVoice) return
+                    if (isVoice || isFile) return
                     setActiveMsg((id) => (id === m.id ? null : m.id))
                   }}
                 >
@@ -345,6 +379,18 @@ export function ChatView({
                         mime={m.audio_mime}
                         durationMs={m.duration_ms ?? 0}
                       />
+                    ) : isFile && m.file_b64 ? (
+                      <a
+                        className="nearby-file-link"
+                        href={`data:${m.file_mime || 'application/octet-stream'};base64,${m.file_b64}`}
+                        download={m.file_name || 'file'}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {m.file_name || 'File'}
+                        {m.file_size != null
+                          ? ` (${Math.round(m.file_size / 1024)} KB)`
+                          : ''}
+                      </a>
                     ) : (
                       <p>{m.text}</p>
                     )}
@@ -353,6 +399,7 @@ export function ChatView({
                     )}
                     {!isSnap &&
                       !isVoice &&
+                      !isFile &&
                       Object.keys(m.reactions).length > 0 && (
                         <div className="msg-reactions">
                           {Object.values(m.reactions).map((emoji, i) => (
@@ -363,6 +410,7 @@ export function ChatView({
                   </div>
                   {!isSnap &&
                     !isVoice &&
+                    !isFile &&
                     activeMsg === m.id &&
                     online &&
                     canEncrypt && (
@@ -426,6 +474,29 @@ export function ChatView({
           >
             <MicIcon />
           </button>
+          {onSendFile && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) onSendFile(f)
+                }}
+              />
+              <button
+                type="button"
+                className="composer-cam"
+                aria-label="Attach file"
+                disabled={unavailable || !canEncrypt}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                ＋
+              </button>
+            </>
+          )}
           <input
             type="text"
             value={text}
@@ -446,6 +517,23 @@ export function ChatView({
         </form>
       )}
       {recError && <p className="composer-error">{recError}</p>}
+      {fileTransfer && (
+        <div className="composer composer--rec">
+          <span className="rec-label">
+            Sending {fileTransfer.name} (
+            {Math.min(
+              100,
+              Math.round((fileTransfer.sent / Math.max(1, fileTransfer.total)) * 100),
+            )}
+            %)
+          </span>
+          {onCancelFile && (
+            <button type="button" className="ghost-btn" onClick={onCancelFile}>
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
 
       {viewingMsg?.image_b64 && (
         <SnapViewer

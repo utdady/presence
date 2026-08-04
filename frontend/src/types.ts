@@ -32,7 +32,15 @@ export type WsIncoming =
       payload: string
     }
   | {
-      type: 'msg' | 'typing' | 'reaction' | 'snap' | 'voice' | 'profile'
+      type:
+        | 'msg'
+        | 'typing'
+        | 'reaction'
+        | 'snap'
+        | 'voice'
+        | 'profile'
+        | 'call'
+        | 'file'
       from: string
       to: string
       payload: string
@@ -61,7 +69,7 @@ export interface ChatMessage {
   text: string
   status: 'sending' | 'sent' | 'undelivered' | 'failed'
   reactions: Record<string, string>
-  kind?: 'text' | 'snap' | 'voice'
+  kind?: 'text' | 'snap' | 'voice' | 'file'
   timer_sec?: SnapTimerSec
   opened?: boolean
   /** Raw JPEG base64 (no data: prefix). Cleared after view-once consume. */
@@ -70,6 +78,10 @@ export interface ChatMessage {
   audio_b64?: string
   audio_mime?: string
   duration_ms?: number
+  file_name?: string
+  file_mime?: string
+  file_b64?: string
+  file_size?: number
 }
 
 export type PlainPayload =
@@ -100,6 +112,36 @@ export type PlainPayload =
       kind: 'profile'
       version: string
       clear: true
+    }
+  | { kind: 'call-offer'; fingerprint: string }
+  | { kind: 'call-answer' }
+  | { kind: 'call-reject' }
+  | { kind: 'call-end' }
+  | {
+      kind: 'webrtc-signal'
+      signal: RTCSessionDescriptionInit | RTCIceCandidateInit
+    }
+  | {
+      kind: 'file-meta'
+      msg_id: string
+      name: string
+      mime: string
+      size: number
+      totalChunks: number
+    }
+  | {
+      kind: 'file-chunk'
+      msg_id: string
+      index: number
+      data_b64: string
+    }
+  | {
+      kind: 'file-end'
+      msg_id: string
+    }
+  | {
+      kind: 'file-cancel'
+      msg_id: string
     }
 
 export interface InvitePublic {
