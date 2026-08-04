@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  markPrimeSeen,
+  shouldShowPrime,
+} from '../featurePermissions'
 import { videoFrameToSnapJpeg } from '../snapImage'
 import type { SnapTimerSec } from '../types'
+import { PermissionPrime } from './PermissionPrime'
 
 const TIMERS: { label: string; value: SnapTimerSec }[] = [
   { label: 'Off', value: 0 },
@@ -25,6 +30,9 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
   const [frozenB64, setFrozenB64] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [primeCheck, setPrimeCheck] = useState<'loading' | 'prime' | 'ready'>(
+    'loading',
+  )
 
   const stopStream = useCallback(() => {
     // Invalidate in-flight getUserMedia so a late resolve won't reattach
@@ -77,10 +85,21 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
   }, [stopStream])
 
   useEffect(() => {
-    if (frozenB64) return
+    let cancelled = false
+    void shouldShowPrime('camera').then((show) => {
+      if (cancelled) return
+      setPrimeCheck(show ? 'prime' : 'ready')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (primeCheck !== 'ready' || frozenB64) return
     void startCamera()
     return () => stopStream()
-  }, [startCamera, stopStream, frozenB64])
+  }, [startCamera, stopStream, frozenB64, primeCheck])
 
   async function handleShutter() {
     const video = videoRef.current
@@ -111,6 +130,27 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
   function handleCancel() {
     stopStream()
     onClose()
+  }
+
+  if (primeCheck === 'loading') {
+    return (
+      <div className="snap-capture snap-capture--priming" role="dialog" aria-label="Take a snap">
+        Checking camera…
+      </div>
+    )
+  }
+
+  if (primeCheck === 'prime') {
+    return (
+      <PermissionPrime
+        feature="camera"
+        onNotNow={onClose}
+        onContinue={() => {
+          markPrimeSeen('camera')
+          setPrimeCheck('ready')
+        }}
+      />
+    )
   }
 
   return (

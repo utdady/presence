@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  markPrimeSeen,
+  shouldShowPrime,
+} from '../featurePermissions'
 import type { NearbyCallPhase, NearbyChatMessage } from './types'
 import { nearbyTransport, type NearbyTransport } from './capability'
 import { useLanNearbyCall } from './useLanNearbyCall'
 import { useNearbyCall } from './useNearbyCall'
+import { PermissionPrime } from '../components/PermissionPrime'
 
 interface Props {
   userId: string
@@ -56,10 +61,66 @@ function NativeNearbyUI({
 }: Props) {
   const call = useNearbyCall({ userId, displayName, publicKey, privateKey })
   const audioRef = useRef<HTMLAudioElement>(null)
+  const [nearbyPrime, setNearbyPrime] = useState(false)
+  const [micPrime, setMicPrime] = useState(false)
+  const pendingMicAction = useRef<null | (() => void)>(null)
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
   }, [call])
+
+  async function onFindNearby() {
+    if (await shouldShowPrime('nearby')) {
+      setNearbyPrime(true)
+      return
+    }
+    void call.startScanning()
+  }
+
+  async function withMicPrime(action: () => void) {
+    if (await shouldShowPrime('microphone')) {
+      pendingMicAction.current = action
+      setMicPrime(true)
+      return
+    }
+    action()
+  }
+
+  if (nearbyPrime) {
+    return (
+      <div className="nearby-page">
+        <PermissionPrime
+          feature="nearby"
+          onNotNow={() => setNearbyPrime(false)}
+          onContinue={() => {
+            markPrimeSeen('nearby')
+            setNearbyPrime(false)
+            void call.startScanning()
+          }}
+        />
+      </div>
+    )
+  }
+
+  if (micPrime) {
+    return (
+      <div className="nearby-page">
+        <PermissionPrime
+          feature="microphone"
+          onNotNow={() => {
+            pendingMicAction.current = null
+            setMicPrime(false)
+          }}
+          onContinue={() => {
+            markPrimeSeen('microphone')
+            setMicPrime(false)
+            pendingMicAction.current?.()
+            pendingMicAction.current = null
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="nearby-page">
@@ -80,14 +141,13 @@ function NativeNearbyUI({
       <p className="nearby-status">{call.status || 'Idle'}</p>
       {call.error && <p className="form-error">{call.error}</p>}
       <p className="nearby-note" style={{ padding: '0 1.25rem' }}>
-        Bluetooth only — no Wi‑Fi or internet needed. Keep Bluetooth on; grant
-        location / Nearby permissions if asked. Chat and voice travel over
-        Nearby Connections payloads.
+        Bluetooth only — no Wi‑Fi or internet needed. Keep Bluetooth on. Chat
+        and voice travel over Nearby Connections.
       </p>
 
       {call.phase === 'idle' && (
         <div className="nearby-actions">
-          <button type="button" onClick={() => void call.startScanning()}>
+          <button type="button" onClick={() => void onFindNearby()}>
             Find nearby
           </button>
         </div>
@@ -124,7 +184,20 @@ function NativeNearbyUI({
         </div>
       )}
 
-      <CallControls call={call} bluetooth />
+      <CallControls
+        call={{
+          phase: call.phase,
+          remoteName: call.remoteName,
+          remoteFingerprint: call.remoteFingerprint,
+          muted: call.muted,
+          startCall: () => void withMicPrime(() => void call.startCall()),
+          acceptCall: () => void withMicPrime(() => void call.acceptCall()),
+          rejectCall: call.rejectCall,
+          endCall: call.endCall,
+          toggleMute: call.toggleMute,
+        }}
+        bluetooth
+      />
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}
@@ -147,10 +220,41 @@ function LanNearbyUI({
   const audioRef = useRef<HTMLAudioElement>(null)
   const [joinCode, setJoinCode] = useState('')
   const [showOnlineRooms, setShowOnlineRooms] = useState(false)
+  const [micPrime, setMicPrime] = useState(false)
+  const pendingMicAction = useRef<null | (() => void)>(null)
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
   }, [call])
+
+  async function withMicPrime(action: () => void) {
+    if (await shouldShowPrime('microphone')) {
+      pendingMicAction.current = action
+      setMicPrime(true)
+      return
+    }
+    action()
+  }
+
+  if (micPrime) {
+    return (
+      <div className="nearby-page">
+        <PermissionPrime
+          feature="microphone"
+          onNotNow={() => {
+            pendingMicAction.current = null
+            setMicPrime(false)
+          }}
+          onContinue={() => {
+            markPrimeSeen('microphone')
+            setMicPrime(false)
+            pendingMicAction.current?.()
+            pendingMicAction.current = null
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="nearby-page">
@@ -239,7 +343,21 @@ function LanNearbyUI({
         </div>
       )}
 
-      <CallControls call={call} showLeave />
+      <CallControls
+        call={{
+          phase: call.phase,
+          remoteName: call.remoteName,
+          remoteFingerprint: call.remoteFingerprint,
+          muted: call.muted,
+          startCall: () => void withMicPrime(() => void call.startCall()),
+          acceptCall: () => void withMicPrime(() => void call.acceptCall()),
+          rejectCall: call.rejectCall,
+          endCall: call.endCall,
+          toggleMute: call.toggleMute,
+          leaveRoom: call.leaveRoom,
+        }}
+        showLeave
+      />
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}

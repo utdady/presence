@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  markPrimeSeen,
+  shouldShowPrime,
+} from '../featurePermissions'
 import { Avatar } from './Avatar'
+import { PermissionPrime } from './PermissionPrime'
 import { SnapCapture } from './SnapCapture'
 import { SnapViewer } from './SnapViewer'
 import { VoiceBubble } from './VoiceBubble'
@@ -55,6 +60,7 @@ export function ChatView({
   const [recording, setRecording] = useState(false)
   const [recElapsed, setRecElapsed] = useState(0)
   const [recError, setRecError] = useState<string | null>(null)
+  const [micPrime, setMicPrime] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const typingTimer = useRef<number | undefined>(undefined)
@@ -108,6 +114,16 @@ export function ChatView({
   }
 
   async function startRecording() {
+    if (unavailable || !canEncrypt || recording) return
+    setRecError(null)
+    if (await shouldShowPrime('microphone')) {
+      setMicPrime(true)
+      return
+    }
+    await beginRecording()
+  }
+
+  async function beginRecording() {
     if (unavailable || !canEncrypt || recording) return
     setRecError(null)
     const mime = pickRecorderMime()
@@ -232,6 +248,20 @@ export function ChatView({
         onSend={(imageB64, timerSec) => {
           onSendSnap(imageB64, timerSec)
           setCapturing(false)
+        }}
+      />
+    )
+  }
+
+  if (micPrime) {
+    return (
+      <PermissionPrime
+        feature="microphone"
+        onNotNow={() => setMicPrime(false)}
+        onContinue={() => {
+          markPrimeSeen('microphone')
+          setMicPrime(false)
+          void beginRecording()
         }}
       />
     )
