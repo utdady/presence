@@ -356,6 +356,23 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     setPhase('scanning')
     setStatus('Looking for nearby Presence devices…')
     try {
+      // Clear any half-open Nearby session from a previous attempt.
+      try {
+        await PresenceNearby.stop()
+      } catch {
+        /* ignore */
+      }
+      try {
+        await PresenceNearby.requestPermissions()
+      } catch (permErr) {
+        setError(
+          permErr instanceof Error
+            ? permErr.message
+            : 'Location and Bluetooth permissions are required for Nearby',
+        )
+        setPhase('idle')
+        return
+      }
       await PresenceNearby.startAdvertising({
         displayName: optsRef.current.displayName,
       })
@@ -363,6 +380,11 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start Nearby')
       setPhase('idle')
+      try {
+        await PresenceNearby.stop()
+      } catch {
+        /* ignore */
+      }
     }
   }, [])
 

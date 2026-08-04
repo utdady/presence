@@ -27,8 +27,8 @@ export const FEATURE_PRIME: Record<FeatureKind, FeaturePrimeCopy> = {
     denyLabel: 'Not now',
   },
   nearby: {
-    title: 'Nearby & Bluetooth',
-    body: 'Offline Nearby needs Bluetooth (and on some phones, location for device discovery). Presence uses this only when you open Nearby—not for internet chat.',
+    title: 'Nearby, Bluetooth & Location',
+    body: 'Offline Nearby needs Bluetooth and Location (Android uses location to discover devices nearby—not GPS tracking by Presence). Allow when prompted. Used only while Nearby is open.',
     allowLabel: 'Continue',
     denyLabel: 'Not now',
   },

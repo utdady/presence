@@ -1,14 +1,21 @@
 package app.presence.nearby;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -24,8 +31,33 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
 import com.google.android.gms.nearby.connection.Strategy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
-@CapacitorPlugin(name = "PresenceNearby")
+@CapacitorPlugin(
+    name = "PresenceNearby",
+    permissions = {
+        @Permission(
+            alias = "location",
+            strings = {
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            }
+        ),
+        @Permission(
+            alias = "bluetooth",
+            strings = {
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+                Manifest.permission.BLUETOOTH_CONNECT
+            }
+        ),
+        @Permission(
+            alias = "nearbyWifi",
+            strings = { Manifest.permission.NEARBY_WIFI_DEVICES }
+        )
+    }
+)
 public class PresenceNearbyPlugin extends Plugin {
     private static final String TAG = "PresenceNearby";
     private static final String SERVICE_ID = "presence.nearby.v1";
@@ -33,12 +65,120 @@ public class PresenceNearbyPlugin extends Plugin {
 
     private ConnectionsClient connectionsClient;
     private String connectedEndpointId;
+    private PluginCall pendingStartCall;
+    private String pendingStartAction; // "advertise" | "discover"
 
     private ConnectionsClient client() {
         if (connectionsClient == null) {
             connectionsClient = Nearby.getConnectionsClient(getContext());
         }
         return connectionsClient;
+    }
+
+    /** Stop advertise/discover so retries don't hit STATUS_ALREADY_*. */
+    private void quietStopNetworking() {
+        try {
+            client().stopAdvertising();
+        } catch (Exception e) {
+            Log.d(TAG, "stopAdvertising: " + e.getMessage());
+        }
+        try {
+            client().stopDiscovery();
+        } catch (Exception e) {
+            Log.d(TAG, "stopDiscovery: " + e.getMessage());
+        }
+    }
+
+    private boolean isGranted(String permission) {
+        return ContextCompat.checkSelfPermission(getContext(), permission)
+            == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasRequiredRuntimePermissions() {
+        if (!isGranted(Manifest.permission.ACCESS_COARSE_LOCATION)
+            || !isGranted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!isGranted(Manifest.permission.BLUETOOTH_SCAN)
+                || !isGranted(Manifest.permission.BLUETOOTH_ADVERTISE)
+                || !isGranted(Manifest.permission.BLUETOOTH_CONNECT)) {
+                return false;
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!isGranted(Manifest.permission.NEARBY_WIFI_DEVICES)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String[] missingPermissionAliases() {
+        List<String> aliases = new ArrayList<>();
+        if (getPermissionState("location") != PermissionState.GRANTED) {
+            // Also handle partial grant via direct checks
+            if (!isGranted(Manifest.permission.ACCESS_COARSE_LOCATION)
+                || !isGranted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+                aliases.add("location");
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!isGranted(Manifest.permission.BLUETOOTH_SCAN)
+                || !isGranted(Manifest.permission.BLUETOOTH_ADVERTISE)
+                || !isGranted(Manifest.permission.BLUETOOTH_CONNECT)) {
+                aliases.add("bluetooth");
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!isGranted(Manifest.permission.NEARBY_WIFI_DEVICES)) {
+                aliases.add("nearbyWifi");
+            }
+        }
+        return aliases.toArray(new String[0]);
+    }
+
+    /**
+     * Request any missing Nearby permissions, then run startAdvertise/startDiscover
+     * stored on the pending call.
+     */
+    private boolean ensurePermissionsThen(PluginCall call, String action) {
+        if (hasRequiredRuntimePermissions()) {
+            return true;
+        }
+        String[] aliases = missingPermissionAliases();
+        if (aliases.length == 0) {
+            return true;
+        }
+        pendingStartCall = call;
+        pendingStartAction = action;
+        requestPermissionForAliases(aliases, call, "nearbyPermissionsCallback");
+        return false;
+    }
+
+    @PermissionCallback
+    private void nearbyPermissionsCallback(PluginCall call) {
+        PluginCall startCall = pendingStartCall != null ? pendingStartCall : call;
+        String action = pendingStartAction;
+        pendingStartCall = null;
+        pendingStartAction = null;
+
+        if (!hasRequiredRuntimePermissions()) {
+            String msg =
+                "Nearby needs Location and Bluetooth permissions. Enable them in system Settings if denied.";
+            emitError(msg);
+            startCall.reject(msg);
+            return;
+        }
+        if ("advertise".equals(action)) {
+            doStartAdvertising(startCall);
+        } else if ("discover".equals(action)) {
+            doStartDiscovery(startCall);
+        } else if ("resolveOnly".equals(action)) {
+            startCall.resolve();
+        } else {
+            startCall.resolve();
+        }
     }
 
     private final PayloadCallback payloadCallback = new PayloadCallback() {
@@ -121,36 +261,118 @@ public class PresenceNearbyPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        if (hasRequiredRuntimePermissions()) {
+            call.resolve();
+            return;
+        }
+        String[] aliases = missingPermissionAliases();
+        if (aliases.length == 0) {
+            call.resolve();
+            return;
+        }
+        pendingStartCall = call;
+        pendingStartAction = "resolveOnly";
+        requestPermissionForAliases(aliases, call, "requestOnlyCallback");
+    }
+
+    @PermissionCallback
+    private void requestOnlyCallback(PluginCall call) {
+        pendingStartCall = null;
+        pendingStartAction = null;
+        if (!hasRequiredRuntimePermissions()) {
+            call.reject("Permissions not granted");
+            return;
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void startAdvertising(PluginCall call) {
+        if (!ensurePermissionsThen(call, "advertise")) {
+            return;
+        }
+        doStartAdvertising(call);
+    }
+
+    private void doStartAdvertising(PluginCall call) {
+        // Always clear prior session so retry after permission grant is clean.
+        quietStopNetworking();
         String displayName = call.getString("displayName", "Presence");
         AdvertisingOptions options = new AdvertisingOptions.Builder().setStrategy(STRATEGY).build();
         client()
             .startAdvertising(displayName, SERVICE_ID, connectionLifecycleCallback, options)
             .addOnSuccessListener(unused -> call.resolve())
             .addOnFailureListener(e -> {
-                emitError(e.getMessage() != null ? e.getMessage() : "advertise failed");
-                call.reject(e.getMessage(), e);
+                String msg = e.getMessage() != null ? e.getMessage() : "advertise failed";
+                // If we still race, stop and try once more.
+                if (msg.contains("STATUS_ALREADY_ADVERTISING") || msg.contains("8001")) {
+                    quietStopNetworking();
+                    client()
+                        .startAdvertising(displayName, SERVICE_ID, connectionLifecycleCallback, options)
+                        .addOnSuccessListener(unused -> call.resolve())
+                        .addOnFailureListener(e2 -> {
+                            String m2 = e2.getMessage() != null ? e2.getMessage() : "advertise failed";
+                            emitError(m2);
+                            call.reject(m2, e2);
+                        });
+                    return;
+                }
+                emitError(msg);
+                call.reject(msg, e);
             });
     }
 
     @PluginMethod
     public void startDiscovery(PluginCall call) {
+        if (!ensurePermissionsThen(call, "discover")) {
+            return;
+        }
+        doStartDiscovery(call);
+    }
+
+    private void doStartDiscovery(PluginCall call) {
+        // Do not stop advertising here — scanning runs advertise + discover together.
+        try {
+            client().stopDiscovery();
+        } catch (Exception e) {
+            Log.d(TAG, "stopDiscovery before start: " + e.getMessage());
+        }
         DiscoveryOptions options = new DiscoveryOptions.Builder().setStrategy(STRATEGY).build();
         client()
             .startDiscovery(SERVICE_ID, discoveryCallback, options)
             .addOnSuccessListener(unused -> call.resolve())
             .addOnFailureListener(e -> {
-                emitError(e.getMessage() != null ? e.getMessage() : "discovery failed");
-                call.reject(e.getMessage(), e);
+                String msg = e.getMessage() != null ? e.getMessage() : "discovery failed";
+                if (msg.contains("STATUS_ALREADY_DISCOVERING") || msg.contains("8002")) {
+                    try {
+                        client().stopDiscovery();
+                    } catch (Exception ignored) {
+                    }
+                    client()
+                        .startDiscovery(SERVICE_ID, discoveryCallback, options)
+                        .addOnSuccessListener(unused -> call.resolve())
+                        .addOnFailureListener(e2 -> {
+                            String m2 = e2.getMessage() != null ? e2.getMessage() : "discovery failed";
+                            emitError(m2);
+                            call.reject(m2, e2);
+                        });
+                    return;
+                }
+                emitError(msg);
+                call.reject(msg, e);
             });
     }
 
     @PluginMethod
     public void stop(PluginCall call) {
-        client().stopAdvertising();
-        client().stopDiscovery();
+        quietStopNetworking();
         if (connectedEndpointId != null) {
-            client().disconnectFromEndpoint(connectedEndpointId);
+            try {
+                client().disconnectFromEndpoint(connectedEndpointId);
+            } catch (Exception e) {
+                Log.d(TAG, "disconnect: " + e.getMessage());
+            }
             connectedEndpointId = null;
         }
         call.resolve();
@@ -176,7 +398,11 @@ public class PresenceNearbyPlugin extends Plugin {
     @PluginMethod
     public void disconnect(PluginCall call) {
         if (connectedEndpointId != null) {
-            client().disconnectFromEndpoint(connectedEndpointId);
+            try {
+                client().disconnectFromEndpoint(connectedEndpointId);
+            } catch (Exception e) {
+                Log.d(TAG, "disconnect: " + e.getMessage());
+            }
             connectedEndpointId = null;
         }
         call.resolve();

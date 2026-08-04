@@ -6,6 +6,10 @@ export class PresenceNearbyWeb extends WebPlugin implements PresenceNearbyPlugin
     return { available: false }
   }
 
+  async requestPermissions(): Promise<void> {
+    throw this.unavailable('Nearby calls require the Android app')
+  }
+
   async startAdvertising(): Promise<void> {
     throw this.unavailable('Nearby calls require the Android app')
   }
