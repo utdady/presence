@@ -7,12 +7,18 @@ import {
   keyFingerprint,
 } from '../crypto'
 import {
+  applySpeakerRoute,
+  canToggleSpeaker,
+  resetSpeakerRoute,
+} from '../callAudio'
+import {
   blobToBase64,
   measureBlobDurationMs,
   pickRecorderMime,
   VOICE_MAX_B64_CHARS,
   VOICE_MAX_MS,
 } from '../voiceAudio'
+import { STICKER_MAX_B64_CHARS } from '../stickerImage'
 import { nearbyCallsAvailable } from './capability'
 import {
   friendlyNearbyError,
@@ -51,6 +57,8 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [remoteName, setRemoteName] = useState<string | null>(null)
   const [remoteFingerprint, setRemoteFingerprint] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
+  const [speakerOn, setSpeakerOn] = useState(false)
+  const speakerAvailable = canToggleSpeaker()
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
   const [messages, setMessages] = useState<NearbyChatMessage[]>([])
@@ -67,6 +75,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const blobQueueRef = useRef<Blob[]>([])
   const playingRef = useRef(false)
   const mutedRef = useRef(false)
+  const speakerRef = useRef(false)
   const phaseRef = useRef<NearbyCallPhase>('idle')
   const mediaGenRef = useRef(0)
   const mseRef = useRef<MediaSource | null>(null)
@@ -139,6 +148,9 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     resetMse()
     setMuted(false)
     mutedRef.current = false
+    speakerRef.current = false
+    setSpeakerOn(false)
+    void resetSpeakerRoute()
   }, [resetMse, stopVoiceCapture])
 
   const sendRaw = useCallback(async (wire: NearbyWire) => {
@@ -311,6 +323,44 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
               sentAt: plain.sentAt,
               mine: false,
               kind: 'text',
+              reply_to: plain.reply_to,
+              reactions: {},
+            },
+          ]
+        })
+        return
+      }
+      if (plain.type === 'reaction') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === plain.msg_id
+              ? {
+                  ...m,
+                  reactions: {
+                    ...(m.reactions ?? {}),
+                    [plain.fromName]: plain.emoji,
+                  },
+                }
+              : m,
+          ),
+        )
+        return
+      }
+      if (plain.type === 'sticker') {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === plain.id)) return prev
+          return [
+            ...prev,
+            {
+              id: plain.id,
+              text: '',
+              fromName: plain.fromName,
+              sentAt: plain.sentAt,
+              mine: false,
+              kind: 'sticker',
+              image_b64: plain.dataB64,
+              sticker_mime: plain.mime,
+              reactions: {},
             },
           ]
         })
@@ -733,12 +783,25 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     }
   }, [])
 
+  const toggleSpeaker = useCallback(() => {
+    const next = !speakerRef.current
+    speakerRef.current = next
+    setSpeakerOn(next)
+    void applySpeakerRoute(remoteAudioRef.current, next)
+  }, [])
+
   const setRemoteAudioEl = useCallback((el: HTMLAudioElement | null) => {
     remoteAudioRef.current = el
+    if (el && speakerRef.current) {
+      void applySpeakerRoute(el, true)
+    }
   }, [])
 
   const sendChat = useCallback(
-    async (text: string) => {
+    async (
+      text: string,
+      replyTo?: { msg_id: string; preview: string; from: string },
+    ) => {
       const trimmed = text.trim()
       if (!trimmed || !sessionKeyRef.current) return
       const msg: NearbyChatMessage = {
@@ -748,6 +811,8 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         sentAt: Date.now(),
         mine: true,
         kind: 'text',
+        reply_to: replyTo,
+        reactions: {},
       }
       await sendSignal({
         type: 'chat',
@@ -755,8 +820,61 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         text: msg.text,
         fromName: msg.fromName,
         sentAt: msg.sentAt,
+        reply_to: replyTo,
       })
       setMessages((prev) => [...prev, msg])
+    },
+    [sendSignal],
+  )
+
+  const sendReaction = useCallback(
+    async (msgId: string, emoji: string) => {
+      if (!sessionKeyRef.current) return
+      const fromName = optsRef.current.displayName
+      await sendSignal({ type: 'reaction', msg_id: msgId, emoji, fromName })
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? { ...m, reactions: { ...(m.reactions ?? {}), [fromName]: emoji } }
+            : m,
+        ),
+      )
+    },
+    [sendSignal],
+  )
+
+  const sendStickerMsg = useCallback(
+    async (imageB64: string, mime: string) => {
+      if (!sessionKeyRef.current) return
+      if (imageB64.length > STICKER_MAX_B64_CHARS) {
+        setError('Sticker too large')
+        return
+      }
+      const id = crypto.randomUUID()
+      const sentAt = Date.now()
+      const fromName = optsRef.current.displayName
+      await sendSignal({
+        type: 'sticker',
+        id,
+        mime,
+        dataB64: imageB64,
+        fromName,
+        sentAt,
+      })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id,
+          text: '',
+          fromName,
+          sentAt,
+          mine: true,
+          kind: 'sticker',
+          image_b64: imageB64,
+          sticker_mime: mime,
+          reactions: {},
+        },
+      ])
     },
     [sendSignal],
   )
@@ -978,6 +1096,8 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     remoteName,
     remoteFingerprint,
     muted,
+    speakerOn,
+    speakerAvailable,
     error,
     status,
     messages,
@@ -992,8 +1112,11 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     rejectCall,
     endCall,
     toggleMute,
+    toggleSpeaker,
     setRemoteAudioEl,
     sendChat,
+    sendReaction,
+    sendStickerMsg,
     startVoiceNote,
     stopVoiceNote,
     cancelVoiceNote,

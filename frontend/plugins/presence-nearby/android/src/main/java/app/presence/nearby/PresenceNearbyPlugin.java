@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -732,6 +733,24 @@ public class PresenceNearbyPlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         quietStopAll();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setSpeakerphone(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("No context");
+            return;
+        }
+        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) {
+            call.reject("No AudioManager");
+            return;
+        }
+        am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        am.setSpeakerphoneOn(on);
         call.resolve();
     }
 

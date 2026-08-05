@@ -18,6 +18,7 @@ import { CallStage } from '../components/CallStage'
 import { NearbyCallPage } from '../nearby/NearbyCallPage'
 import { keyFingerprint } from '../crypto'
 import { usePeerCall } from '../hooks/usePeerCall'
+import { useBackStack } from '../navigation/useBackStack'
 import { usePresenceSession } from '../usePresenceSession'
 
 export function AppShell() {
@@ -111,6 +112,47 @@ function PresenceInner({
       setActivePeerId(peerCall.remoteName)
     }
   }, [peerCall.phase, peerCall.remoteName, setActivePeerId])
+
+  useBackStack([
+    () => {
+      if (
+        peerCall.phase === 'incoming' ||
+        peerCall.phase === 'outgoing' ||
+        peerCall.phase === 'in_call'
+      ) {
+        if (peerCall.phase === 'incoming') peerCall.rejectCall()
+        else peerCall.endCall()
+        return true
+      }
+      return false
+    },
+    () => {
+      if (activePeerId) {
+        setActivePeerId(null)
+        return true
+      }
+      return false
+    },
+    () => {
+      if (nearbyMode) {
+        setNearbyMode(false)
+        return true
+      }
+      if (invitesMode) {
+        setInvitesMode(false)
+        return true
+      }
+      if (membersMode) {
+        setMembersMode(false)
+        return true
+      }
+      if (settingsOpen) {
+        setSettingsOpen(false)
+        return true
+      }
+      return false
+    },
+  ])
 
   async function onPickAvatar(file: File | undefined) {
     if (!file) return
@@ -428,12 +470,17 @@ function PresenceInner({
             canEncrypt={!!session.sessionKeys[activePeer.id]}
             reactions={session.reactions}
             onBack={() => setActivePeerId(null)}
-            onSend={(text) => session.sendMessage(activePeer.id, text)}
+            onSend={(text, replyTo) =>
+              session.sendMessage(activePeer.id, text, replyTo)
+            }
             onSendSnap={(imageB64, timerSec) =>
               session.sendSnap(activePeer.id, imageB64, timerSec)
             }
             onSendVoice={(audioB64, mime, durationMs) =>
               session.sendVoice(activePeer.id, audioB64, mime, durationMs)
+            }
+            onSendSticker={(imageB64, mime) =>
+              session.sendSticker(activePeer.id, imageB64, mime)
             }
             onSendFile={(file) => {
               void session.sendFile(activePeer.id, file).catch((e) => {
@@ -452,7 +499,7 @@ function PresenceInner({
                   }
                 : null
             }
-            onStartCall={() => void peerCall.startCall()}
+            onStartCall={(media) => void peerCall.startCall(media)}
             onConsumeSnap={(msgId) =>
               session.consumeSnap(activePeer.id, msgId)
             }
@@ -476,11 +523,21 @@ function PresenceInner({
         open
         phase={peerCall.phase}
         peerName={callPeerName}
+        media={peerCall.media}
         muted={peerCall.muted}
+        cameraOff={peerCall.cameraOff}
+        speakerOn={peerCall.speakerOn}
+        speakerAvailable={peerCall.speakerAvailable}
+        offerReady={peerCall.offerReady}
+        error={peerCall.error}
         onAccept={() => void peerCall.acceptCall()}
         onReject={peerCall.rejectCall}
         onEnd={peerCall.endCall}
         onToggleMute={peerCall.toggleMute}
+        onToggleCamera={peerCall.toggleCamera}
+        onToggleSpeaker={peerCall.toggleSpeaker}
+        onBindRemoteVideo={peerCall.setRemoteVideoEl}
+        onBindLocalVideo={peerCall.setLocalVideoEl}
       />
     </div>
   )

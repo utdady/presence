@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import type { CallMedia } from '../hooks/usePeerCall'
 import type { NearbyCallPhase } from '../nearby/types'
 
 export type CallStagePhase =
@@ -12,13 +14,24 @@ interface CallStageProps {
   phase: CallStagePhase | NearbyCallPhase
   peerName: string
   subtitle?: string
+  media?: CallMedia
   muted: boolean
+  cameraOff?: boolean
+  speakerOn?: boolean
+  speakerAvailable?: boolean
   catchingUp?: boolean
+  /** False until the encrypted WebRTC offer has arrived (Accept should wait). */
+  offerReady?: boolean
+  error?: string | null
   onAccept: () => void
   onReject: () => void
   onEnd: () => void
   onToggleMute: () => void
+  onToggleCamera?: () => void
+  onToggleSpeaker?: () => void
   onDismiss?: () => void
+  onBindRemoteVideo?: (el: HTMLVideoElement | null) => void
+  onBindLocalVideo?: (el: HTMLVideoElement | null) => void
 }
 
 function isActivePhase(phase: string): boolean {
@@ -34,35 +47,102 @@ export function CallStage({
   phase,
   peerName,
   subtitle,
+  media = 'audio',
   muted,
+  cameraOff = false,
+  speakerOn = false,
+  speakerAvailable = false,
   catchingUp,
+  offerReady = true,
+  error,
   onAccept,
   onReject,
   onEnd,
   onToggleMute,
+  onToggleCamera,
+  onToggleSpeaker,
   onDismiss,
+  onBindRemoteVideo,
+  onBindLocalVideo,
 }: CallStageProps) {
+  const remoteRef = useRef<HTMLVideoElement>(null)
+  const localRef = useRef<HTMLVideoElement>(null)
+  const bindRemoteRef = useRef(onBindRemoteVideo)
+  const bindLocalRef = useRef(onBindLocalVideo)
+  bindRemoteRef.current = onBindRemoteVideo
+  bindLocalRef.current = onBindLocalVideo
+  const isVideo = media === 'video'
+
+  // Bind once while video UI is open — do not rebind on phase (that briefly
+  // nulls the elements and drops remote video right after Accept).
+  useEffect(() => {
+    if (!open || !isVideo) return
+    bindRemoteRef.current?.(remoteRef.current)
+    bindLocalRef.current?.(localRef.current)
+    return () => {
+      bindRemoteRef.current?.(null)
+      bindLocalRef.current?.(null)
+    }
+  }, [open, isVideo])
+
   if (!open || !isActivePhase(phase)) return null
 
   const title =
     phase === 'incoming'
-      ? 'Incoming call'
+      ? isVideo
+        ? 'Incoming video call'
+        : 'Incoming call'
       : phase === 'outgoing'
-        ? 'Calling…'
+        ? isVideo
+          ? 'Video calling…'
+          : 'Calling…'
         : catchingUp
           ? 'Connected — catching up'
-          : 'In call'
+          : isVideo
+            ? 'Video call'
+            : 'In call'
 
   return (
-    <div className="call-stage" role="dialog" aria-label={title}>
+    <div
+      className={`call-stage${isVideo ? ' call-stage--video' : ''}`}
+      role="dialog"
+      aria-label={title}
+    >
       <div className="call-stage-bg" />
+      {isVideo && (
+        <>
+          <video
+            ref={remoteRef}
+            className="call-stage-remote-video"
+            autoPlay
+            playsInline
+          />
+          <video
+            ref={localRef}
+            className={`call-stage-local-video${cameraOff ? ' is-off' : ''}`}
+            autoPlay
+            playsInline
+            muted
+          />
+        </>
+      )}
       <div className="call-stage-body">
         <p className="call-stage-label">{title}</p>
-        <div className="call-stage-avatar" aria-hidden>
-          {(peerName || '?').slice(0, 1).toUpperCase()}
-        </div>
-        <h2 className="call-stage-name">{peerName || 'Peer'}</h2>
+        {(!isVideo || phase !== 'in_call') && (
+          <>
+            <div className="call-stage-avatar" aria-hidden>
+              {(peerName || '?').slice(0, 1).toUpperCase()}
+            </div>
+            <h2 className="call-stage-name">{peerName || 'Peer'}</h2>
+          </>
+        )}
+        {isVideo && phase === 'in_call' && (
+          <h2 className="call-stage-name call-stage-name--overlay">
+            {peerName || 'Peer'}
+          </h2>
+        )}
         {subtitle && <p className="call-stage-sub">{subtitle}</p>}
+        {error && <p className="call-stage-sub call-stage-error">{error}</p>}
 
         <div className="call-stage-actions">
           {phase === 'incoming' && (
@@ -78,21 +158,42 @@ export function CallStage({
                 type="button"
                 className="call-stage-btn call-stage-btn--accept"
                 onClick={onAccept}
+                disabled={!offerReady}
               >
-                Accept
+                {offerReady ? 'Accept' : 'Connecting…'}
               </button>
             </>
           )}
           {(phase === 'outgoing' || phase === 'in_call') && (
             <>
               {phase === 'in_call' && (
-                <button
-                  type="button"
-                  className={`call-stage-btn call-stage-btn--mute${muted ? ' is-on' : ''}`}
-                  onClick={onToggleMute}
-                >
-                  {muted ? 'Unmute' : 'Mute'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`call-stage-btn call-stage-btn--mute${muted ? ' is-on' : ''}`}
+                    onClick={onToggleMute}
+                  >
+                    {muted ? 'Unmute' : 'Mute'}
+                  </button>
+                  {isVideo && onToggleCamera && (
+                    <button
+                      type="button"
+                      className={`call-stage-btn call-stage-btn--cam${cameraOff ? ' is-on' : ''}`}
+                      onClick={onToggleCamera}
+                    >
+                      {cameraOff ? 'Cam off' : 'Camera'}
+                    </button>
+                  )}
+                  {speakerAvailable && onToggleSpeaker && (
+                    <button
+                      type="button"
+                      className={`call-stage-btn call-stage-btn--speaker${speakerOn ? ' is-on' : ''}`}
+                      onClick={onToggleSpeaker}
+                    >
+                      {speakerOn ? 'Speaker' : 'Earpiece'}
+                    </button>
+                  )}
+                </>
               )}
               <button
                 type="button"

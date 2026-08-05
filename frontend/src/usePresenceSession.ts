@@ -14,14 +14,16 @@ import {
 } from './crypto'
 import type {
   ChatMessage,
+  MessageReplyTo,
   PlainPayload,
   SnapTimerSec,
   UserPublic,
   WsIncoming,
 } from './types'
 import type { HubCallSignal } from './hooks/usePeerCall'
+import { QUICK_REACTIONS } from './emojiData'
 
-const REACTIONS = ['👍', '❤️', '😂'] as const
+const REACTIONS = QUICK_REACTIONS
 
 export type AvatarMap = Record<string, { version: string; imageB64: string }>
 
@@ -332,6 +334,33 @@ export function usePresenceSession(opts: UsePresenceOptions) {
                     status: 'sent',
                     reactions: {},
                     kind: 'text',
+                    reply_to: plain.reply_to,
+                  },
+                ],
+              }
+            })
+            if (!isEcho && activePeerIdRef.current !== peerId) {
+              setUnread((prev) =>
+                prev[peerId] ? prev : { ...prev, [peerId]: true },
+              )
+            }
+          } else if (plain.kind === 'sticker') {
+            setMessages((prev) => {
+              const list = prev[peerId] ?? []
+              if (list.some((m) => m.id === plain.msg_id)) return prev
+              return {
+                ...prev,
+                [peerId]: [
+                  ...list,
+                  {
+                    id: plain.msg_id,
+                    from: isEcho ? myIdRef.current : peerId,
+                    text: '',
+                    status: 'sent',
+                    reactions: {},
+                    kind: 'sticker',
+                    image_b64: plain.image_b64,
+                    sticker_mime: plain.mime,
                   },
                 ],
               }
@@ -549,11 +578,16 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   }, [token, publicKey, sendRaw])
 
   const sendMessage = useCallback(
-    (peerId: string, text: string) => {
+    (peerId: string, text: string, replyTo?: MessageReplyTo) => {
       const key = sessionKeys[peerId]
       if (!key) return
       const msg_id = newMsgId()
-      const payload = encryptPayload(key, { kind: 'msg', text, msg_id })
+      const payload = encryptPayload(key, {
+        kind: 'msg',
+        text,
+        msg_id,
+        reply_to: replyTo,
+      })
       const sent = sendRaw({ type: 'msg', to: peerId, payload, msg_id })
       setMessages((prev) => ({
         ...prev,
@@ -566,6 +600,39 @@ export function usePresenceSession(opts: UsePresenceOptions) {
             status: sent ? 'sending' : 'failed',
             reactions: {},
             kind: 'text',
+            reply_to: replyTo,
+          },
+        ],
+      }))
+    },
+    [sessionKeys, myId, sendRaw],
+  )
+
+  const sendSticker = useCallback(
+    (peerId: string, imageB64: string, mime: string) => {
+      const key = sessionKeys[peerId]
+      if (!key) return
+      const msg_id = newMsgId()
+      const payload = encryptPayload(key, {
+        kind: 'sticker',
+        msg_id,
+        mime,
+        image_b64: imageB64,
+      })
+      const sent = sendRaw({ type: 'sticker', to: peerId, payload, msg_id })
+      setMessages((prev) => ({
+        ...prev,
+        [peerId]: [
+          ...(prev[peerId] ?? []),
+          {
+            id: msg_id,
+            from: myId,
+            text: '',
+            status: sent ? 'sending' : 'failed',
+            reactions: {},
+            kind: 'sticker',
+            image_b64: imageB64,
+            sticker_mime: mime,
           },
         ],
       }))
@@ -929,6 +996,7 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     sendMessage,
     sendSnap,
     sendVoice,
+    sendSticker,
     sendFile,
     cancelFile,
     fileTransfer,

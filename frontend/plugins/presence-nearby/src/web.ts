@@ -29,4 +29,8 @@ export class PresenceNearbyWeb extends WebPlugin implements PresenceNearbyPlugin
   async send(): Promise<void> {
     throw this.unavailable('Nearby calls require the Android app')
   }
+
+  async setSpeakerphone(): Promise<void> {
+    /* no-op on web */
+  }
 }

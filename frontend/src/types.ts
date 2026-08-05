@@ -62,6 +62,12 @@ export type WsIncoming =
       payload: string
     }
 
+export interface MessageReplyTo {
+  msg_id: string
+  preview: string
+  from: string
+}
+
 export interface ChatMessage {
   id: string
   from: string
@@ -69,7 +75,7 @@ export interface ChatMessage {
   text: string
   status: 'sending' | 'sent' | 'undelivered' | 'failed'
   reactions: Record<string, string>
-  kind?: 'text' | 'snap' | 'voice' | 'file'
+  kind?: 'text' | 'snap' | 'voice' | 'file' | 'sticker'
   timer_sec?: SnapTimerSec
   opened?: boolean
   /** Raw JPEG base64 (no data: prefix). Cleared after view-once consume. */
@@ -82,12 +88,25 @@ export interface ChatMessage {
   file_mime?: string
   file_b64?: string
   file_size?: number
+  reply_to?: MessageReplyTo
+  sticker_mime?: string
 }
 
 export type PlainPayload =
-  | { kind: 'msg'; text: string; msg_id: string }
+  | {
+      kind: 'msg'
+      text: string
+      msg_id: string
+      reply_to?: MessageReplyTo
+    }
   | { kind: 'typing'; active: boolean }
   | { kind: 'reaction'; msg_id: string; emoji: string }
+  | {
+      kind: 'sticker'
+      msg_id: string
+      mime: string
+      image_b64: string
+    }
   | {
       kind: 'snap'
       msg_id: string
@@ -113,7 +132,7 @@ export type PlainPayload =
       version: string
       clear: true
     }
-  | { kind: 'call-offer'; fingerprint: string }
+  | { kind: 'call-offer'; fingerprint: string; media?: 'audio' | 'video' }
   | { kind: 'call-answer' }
   | { kind: 'call-reject' }
   | { kind: 'call-end' }

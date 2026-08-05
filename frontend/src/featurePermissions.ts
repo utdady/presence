@@ -16,13 +16,13 @@ export type FeaturePrimeCopy = {
 export const FEATURE_PRIME: Record<FeatureKind, FeaturePrimeCopy> = {
   camera: {
     title: 'Camera access',
-    body: 'Presence uses the camera only when you take a snap. Photos are encrypted end-to-end and exist only while both of you are online.',
+    body: 'Presence uses the camera for snaps and video calls. Media is encrypted end-to-end and only lasts while both of you are online.',
     allowLabel: 'Allow camera',
     denyLabel: 'Not now',
   },
   microphone: {
     title: 'Microphone access',
-    body: 'Presence uses the mic for voice notes and Nearby voice calls. Audio is encrypted and only lasts while both people are present.',
+    body: 'Presence uses the mic for voice notes and voice/video calls. Audio is encrypted and only lasts while both people are present.',
     allowLabel: 'Allow microphone',
     denyLabel: 'Not now',
   },

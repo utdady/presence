@@ -292,6 +292,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
                 "profile",
                 "call",
                 "file",
+                "sticker",
             ):
                 if not isinstance(to_id, str):
                     await manager.send_to(
@@ -306,7 +307,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
                     payload=payload if isinstance(payload, str) else None,
                     msg_id=msg_id if isinstance(msg_id, str) else None,
                 )
-                if msg_type in ("msg", "snap", "voice", "file"):
+                if msg_type in ("msg", "snap", "voice", "file", "sticker"):
                     await manager.send_json(
                         user.id,
                         {

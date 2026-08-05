@@ -18,6 +18,8 @@ export interface PresenceNearbyPlugin {
   connect(options: { endpointId: string; displayName?: string }): Promise<void>
   disconnect(): Promise<void>
   send(options: { data: string }): Promise<void>
+  /** Android: route call audio to loudspeaker (true) or earpiece (false). */
+  setSpeakerphone(options: { on: boolean }): Promise<void>
   addListener(
     eventName: 'peerFound',
     listenerFunc: (peer: NearbyPeer) => void,

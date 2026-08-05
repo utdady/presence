@@ -27,7 +27,32 @@ export type NearbyPlainSignal =
   | { type: 'call-end' }
   /** Legacy LAN/WebRTC path only — ignored on Bluetooth native. */
   | { type: 'webrtc-signal'; signal: RTCSessionDescriptionInit | RTCIceCandidateInit }
-  | { type: 'chat'; id: string; text: string; fromName: string; sentAt: number }
+  | {
+      type: 'chat'
+      id: string
+      text: string
+      fromName: string
+      sentAt: number
+      reply_to?: {
+        msg_id: string
+        preview: string
+        from: string
+      }
+    }
+  | {
+      type: 'reaction'
+      msg_id: string
+      emoji: string
+      fromName: string
+    }
+  | {
+      type: 'sticker'
+      id: string
+      mime: string
+      dataB64: string
+      fromName: string
+      sentAt: number
+    }
   | {
       type: 'voice-chunk'
       id: string
@@ -75,7 +100,7 @@ export interface NearbyChatMessage {
   fromName: string
   sentAt: number
   mine: boolean
-  kind?: 'text' | 'voice' | 'file'
+  kind?: 'text' | 'voice' | 'file' | 'sticker'
   audio_b64?: string
   audio_mime?: string
   duration_ms?: number
@@ -83,6 +108,14 @@ export interface NearbyChatMessage {
   file_mime?: string
   file_b64?: string
   file_size?: number
+  image_b64?: string
+  sticker_mime?: string
+  reply_to?: {
+    msg_id: string
+    preview: string
+    from: string
+  }
+  reactions?: Record<string, string>
 }
 
 export type NearbyWire =

@@ -3,12 +3,8 @@ import {
   markPrimeSeen,
   shouldShowPrime,
 } from '../featurePermissions'
-import { Avatar } from './Avatar'
-import { PermissionPrime } from './PermissionPrime'
-import { SnapCapture } from './SnapCapture'
-import { SnapViewer } from './SnapViewer'
-import { VoiceBubble } from './VoiceBubble'
-import type { ChatMessage, SnapTimerSec, UserPublic } from '../types'
+import { useEdgeSwipeBack } from '../navigation/useBackStack'
+import type { ChatMessage, MessageReplyTo, SnapTimerSec, UserPublic } from '../types'
 import {
   VOICE_MAX_B64_CHARS,
   VOICE_MAX_MS,
@@ -17,6 +13,17 @@ import {
   measureBlobDurationMs,
   pickRecorderMime,
 } from '../voiceAudio'
+import { Avatar } from './Avatar'
+import {
+  ComposerMediaButton,
+  ComposerMediaTray,
+  useComposerMediaTray,
+} from './ComposerMediaTray'
+import { EmojiPicker } from './EmojiPicker'
+import { PermissionPrime } from './PermissionPrime'
+import { SnapCapture } from './SnapCapture'
+import { SnapViewer } from './SnapViewer'
+import { VoiceBubble } from './VoiceBubble'
 
 interface ChatViewProps {
   me: UserPublic
@@ -27,9 +34,10 @@ interface ChatViewProps {
   leaving: boolean
   canEncrypt: boolean
   reactions: readonly string[]
-  onSend: (text: string) => void
+  onSend: (text: string, replyTo?: MessageReplyTo) => void
   onSendSnap: (imageB64: string, timerSec: SnapTimerSec) => void
   onSendVoice: (audioB64: string, mime: string, durationMs: number) => void
+  onSendSticker?: (imageB64: string, mime: string) => void
   onSendFile?: (file: File) => void
   onCancelFile?: () => void
   fileTransfer?: {
@@ -37,11 +45,19 @@ interface ChatViewProps {
     sent: number
     total: number
   } | null
-  onStartCall?: () => void
+  onStartCall?: (media: 'audio' | 'video') => void
   onConsumeSnap: (msgId: string) => void
   onTyping: (active: boolean) => void
   onReact: (msgId: string, emoji: string) => void
   onBack?: () => void
+}
+
+function previewForMessage(m: ChatMessage): string {
+  if (m.kind === 'sticker') return 'Sticker'
+  if (m.kind === 'voice') return 'Voice message'
+  if (m.kind === 'snap') return 'Snap'
+  if (m.kind === 'file') return m.file_name || 'File'
+  return (m.text || '').slice(0, 80)
 }
 
 export function ChatView({
@@ -56,6 +72,7 @@ export function ChatView({
   onSend,
   onSendSnap,
   onSendVoice,
+  onSendSticker,
   onSendFile,
   onCancelFile,
   fileTransfer,
@@ -66,14 +83,30 @@ export function ChatView({
   onBack,
 }: ChatViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textInputRef = useRef<HTMLInputElement>(null)
   const [text, setText] = useState('')
-  const [activeMsg, setActiveMsg] = useState<string | null>(null)
+  const [menuMsgId, setMenuMsgId] = useState<string | null>(null)
+  const [reactMore, setReactMore] = useState(false)
+  const [replyTo, setReplyTo] = useState<MessageReplyTo | null>(null)
+  const mediaTray = useComposerMediaTray('emoji')
   const [capturing, setCapturing] = useState(false)
   const [viewingSnapId, setViewingSnapId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [recElapsed, setRecElapsed] = useState(0)
   const [recError, setRecError] = useState<string | null>(null)
   const [micPrime, setMicPrime] = useState(false)
+  const [camPrime, setCamPrime] = useState(false)
+  const [callMenuOpen, setCallMenuOpen] = useState(false)
+  const callHoldTimer = useRef<number | undefined>(undefined)
+  const callHoldFired = useRef(false)
+  const pendingMediaAction = useRef<'record' | 'audio' | 'video' | null>(null)
+  const longPressTimer = useRef<number | undefined>(undefined)
+  const swipeRef = useRef<{ id: string; x: number } | null>(null)
+
+  useEdgeSwipeBack(
+    !capturing && !mediaTray.open && !menuMsgId,
+    onBack,
+  )
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const typingTimer = useRef<number | undefined>(undefined)
@@ -132,6 +165,7 @@ export function ChatView({
     if (unavailable || !canEncrypt || recording) return
     setRecError(null)
     if (await shouldShowPrime('microphone')) {
+      pendingMediaAction.current = 'record'
       setMicPrime(true)
       return
     }
@@ -240,9 +274,55 @@ export function ChatView({
     e.preventDefault()
     const trimmed = text.trim()
     if (!trimmed || unavailable || !canEncrypt) return
-    onSend(trimmed)
+    onSend(trimmed, replyTo ?? undefined)
     setText('')
+    setReplyTo(null)
     onTyping(false)
+  }
+
+  function startReply(m: ChatMessage) {
+    setReplyTo({
+      msg_id: m.id,
+      preview: previewForMessage(m),
+      from: m.from,
+    })
+    setMenuMsgId(null)
+    textInputRef.current?.focus()
+  }
+
+  function openMsgMenu(msgId: string) {
+    setMenuMsgId(msgId)
+    setReactMore(false)
+  }
+
+  function insertEmoji(glyph: string) {
+    setText((t) => t + glyph)
+    textInputRef.current?.focus()
+  }
+
+  async function beginVoiceCall() {
+    if (!onStartCall) return
+    if (await shouldShowPrime('microphone')) {
+      pendingMediaAction.current = 'audio'
+      setMicPrime(true)
+      return
+    }
+    onStartCall('audio')
+  }
+
+  async function beginVideoCall() {
+    if (!onStartCall) return
+    if (await shouldShowPrime('camera')) {
+      pendingMediaAction.current = 'video'
+      setCamPrime(true)
+      return
+    }
+    if (await shouldShowPrime('microphone')) {
+      pendingMediaAction.current = 'video'
+      setMicPrime(true)
+      return
+    }
+    onStartCall('video')
   }
 
   function handleChange(value: string) {
@@ -276,22 +356,54 @@ export function ChatView({
     )
   }
 
+  if (camPrime) {
+    return (
+      <PermissionPrime
+        feature="camera"
+        onNotNow={() => {
+          pendingMediaAction.current = null
+          setCamPrime(false)
+        }}
+        onContinue={() => {
+          markPrimeSeen('camera')
+          setCamPrime(false)
+          if (pendingMediaAction.current === 'video') {
+            void beginVideoCall()
+          }
+        }}
+      />
+    )
+  }
+
   if (micPrime) {
     return (
       <PermissionPrime
         feature="microphone"
-        onNotNow={() => setMicPrime(false)}
+        onNotNow={() => {
+          pendingMediaAction.current = null
+          setMicPrime(false)
+        }}
         onContinue={() => {
           markPrimeSeen('microphone')
           setMicPrime(false)
-          void beginRecording()
+          const next = pendingMediaAction.current
+          pendingMediaAction.current = null
+          if (next === 'video') onStartCall?.('video')
+          else if (next === 'audio') onStartCall?.('audio')
+          else void beginRecording()
         }}
       />
     )
   }
 
   return (
-    <div className={`chat${leaving ? ' chat--leaving' : ''}`}>
+    <div
+      className={`chat${leaving ? ' chat--leaving' : ''}`}
+      onClick={() => {
+        if (menuMsgId) setMenuMsgId(null)
+        if (callMenuOpen) setCallMenuOpen(false)
+      }}
+    >
       <header className="chat-header">
         {onBack && (
           <button type="button" className="ghost-btn" onClick={onBack} aria-label="Back">
@@ -322,14 +434,79 @@ export function ChatView({
           </p>
         </div>
         {onStartCall && online && canEncrypt && !unavailable && (
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={onStartCall}
-            aria-label="Start call"
-          >
-            Call
-          </button>
+          <div className="call-launch" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="ghost-btn call-launch-btn"
+              aria-label="Voice call. Hold or right-click for video options"
+              aria-haspopup="menu"
+              aria-expanded={callMenuOpen}
+              onPointerDown={(e) => {
+                // Left-click / touch only — right-click uses context menu.
+                if (e.button !== 0) return
+                callHoldFired.current = false
+                if (callHoldTimer.current) {
+                  window.clearTimeout(callHoldTimer.current)
+                }
+                callHoldTimer.current = window.setTimeout(() => {
+                  callHoldFired.current = true
+                  setCallMenuOpen(true)
+                }, 420)
+              }}
+              onPointerUp={(e) => {
+                if (e.button !== 0) return
+                if (callHoldTimer.current) {
+                  window.clearTimeout(callHoldTimer.current)
+                  callHoldTimer.current = undefined
+                }
+                if (!callHoldFired.current && !callMenuOpen) {
+                  void beginVoiceCall()
+                }
+              }}
+              onPointerLeave={() => {
+                if (callHoldTimer.current) {
+                  window.clearTimeout(callHoldTimer.current)
+                  callHoldTimer.current = undefined
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (callHoldTimer.current) {
+                  window.clearTimeout(callHoldTimer.current)
+                  callHoldTimer.current = undefined
+                }
+                callHoldFired.current = true
+                setCallMenuOpen(true)
+              }}
+            >
+              <PhoneIcon />
+            </button>
+            {callMenuOpen && (
+              <div className="call-launch-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCallMenuOpen(false)
+                    void beginVoiceCall()
+                  }}
+                >
+                  Voice call
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCallMenuOpen(false)
+                    void beginVideoCall()
+                  }}
+                >
+                  Video call
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </header>
 
@@ -350,22 +527,67 @@ export function ChatView({
               const isSnap = m.kind === 'snap'
               const isVoice = m.kind === 'voice'
               const isFile = m.kind === 'file'
+              const isSticker = m.kind === 'sticker'
+              const menuOpen = menuMsgId === m.id
               return (
                 <li
                   key={m.id}
                   className={`msg${mine ? ' msg--mine' : ''}`}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation()
                     if (isSnap) {
                       openSnap(m)
                       return
                     }
-                    if (isVoice || isFile) return
-                    setActiveMsg((id) => (id === m.id ? null : m.id))
+                  }}
+                  onContextMenu={(e) => {
+                    if (isSnap) return
+                    e.preventDefault()
+                    e.stopPropagation()
+                    openMsgMenu(m.id)
+                  }}
+                  onTouchStart={(e) => {
+                    const t = e.touches[0]
+                    if (!t) return
+                    swipeRef.current = { id: m.id, x: t.clientX }
+                    if (isSnap) return
+                    longPressTimer.current = window.setTimeout(() => {
+                      openMsgMenu(m.id)
+                    }, 400)
+                  }}
+                  onTouchMove={() => {
+                    if (longPressTimer.current) {
+                      window.clearTimeout(longPressTimer.current)
+                      longPressTimer.current = undefined
+                    }
+                  }}
+                  onTouchEnd={(e) => {
+                    if (longPressTimer.current) {
+                      window.clearTimeout(longPressTimer.current)
+                      longPressTimer.current = undefined
+                    }
+                    const start = swipeRef.current
+                    swipeRef.current = null
+                    const t = e.changedTouches[0]
+                    if (!start || !t || start.id !== m.id || isSnap) return
+                    if (t.clientX - start.x >= 56 && online && canEncrypt) {
+                      startReply(m)
+                    }
                   }}
                 >
                   <div
-                    className={`msg-bubble${isSnap ? ' msg-bubble--snap' : ''}${isVoice ? ' msg-bubble--voice' : ''}`}
+                    className={`msg-bubble${isSnap ? ' msg-bubble--snap' : ''}${isVoice ? ' msg-bubble--voice' : ''}${isSticker ? ' msg-bubble--sticker' : ''}`}
                   >
+                    {m.reply_to && (
+                      <div className="msg-reply-quote">
+                        <span className="msg-reply-from">
+                          {m.reply_to.from === me.id
+                            ? 'You'
+                            : peer.display_name}
+                        </span>
+                        <span>{m.reply_to.preview}</span>
+                      </div>
+                    )}
                     {isSnap ? (
                       <SnapBubble
                         mine={mine}
@@ -378,6 +600,13 @@ export function ChatView({
                         audioB64={m.audio_b64}
                         mime={m.audio_mime}
                         durationMs={m.duration_ms ?? 0}
+                      />
+                    ) : isSticker && m.image_b64 ? (
+                      <img
+                        className="sticker-bubble-img"
+                        src={`data:${m.sticker_mime || 'image/jpeg'};base64,${m.image_b64}`}
+                        alt="Sticker"
+                        draggable={false}
                       />
                     ) : isFile && m.file_b64 ? (
                       <a
@@ -397,39 +626,60 @@ export function ChatView({
                     {mine && m.status !== 'sent' && m.status !== 'sending' && (
                       <span className="msg-status">{m.status}</span>
                     )}
-                    {!isSnap &&
-                      !isVoice &&
-                      !isFile &&
-                      Object.keys(m.reactions).length > 0 && (
-                        <div className="msg-reactions">
-                          {Object.values(m.reactions).map((emoji, i) => (
-                            <span key={`${m.id}-r-${i}`}>{emoji}</span>
-                          ))}
-                        </div>
-                      )}
+                    {!isSnap && Object.keys(m.reactions).length > 0 && (
+                      <div className="msg-reactions">
+                        {Object.values(m.reactions).map((emoji, i) => (
+                          <span key={`${m.id}-r-${i}`}>{emoji}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {!isSnap &&
-                    !isVoice &&
-                    !isFile &&
-                    activeMsg === m.id &&
-                    online &&
-                    canEncrypt && (
+                  {menuOpen && online && canEncrypt && !isSnap && (
+                    <div
+                      className="msg-context-menu"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="reaction-picker">
                         {reactions.map((emoji) => (
                           <button
                             key={emoji}
                             type="button"
-                            onClick={(ev) => {
-                              ev.stopPropagation()
+                            onClick={() => {
                               onReact(m.id, emoji)
-                              setActiveMsg(null)
+                              setMenuMsgId(null)
                             }}
                           >
                             {emoji}
                           </button>
                         ))}
+                        <button
+                          type="button"
+                          className="reaction-more"
+                          onClick={() => setReactMore((v) => !v)}
+                          aria-label="More reactions"
+                        >
+                          ＋
+                        </button>
                       </div>
-                    )}
+                      {reactMore && (
+                        <EmojiPicker
+                          onPick={(g) => {
+                            onReact(m.id, g)
+                            setMenuMsgId(null)
+                            setReactMore(false)
+                          }}
+                          onClose={() => setReactMore(false)}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className="msg-context-reply"
+                        onClick={() => startReply(m)}
+                      >
+                        Reply
+                      </button>
+                    </div>
+                  )}
                 </li>
               )
             })}
@@ -442,6 +692,34 @@ export function ChatView({
           </ul>
         )}
       </div>
+
+      {replyTo && (
+        <div className="composer-reply">
+          <div>
+            <span className="composer-reply-label">Replying</span>
+            <span className="composer-reply-preview">{replyTo.preview}</span>
+          </div>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => setReplyTo(null)}
+            aria-label="Cancel reply"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      <ComposerMediaTray
+        open={mediaTray.open}
+        tab={mediaTray.tab}
+        onTabChange={mediaTray.setTab}
+        onClose={mediaTray.close}
+        onPickEmoji={insertEmoji}
+        onSendSticker={onSendSticker}
+        stickersEnabled={!!onSendSticker}
+        stickersDisabled={unavailable || !canEncrypt}
+      />
 
       {recording ? (
         <div className="composer composer--rec">
@@ -498,6 +776,7 @@ export function ChatView({
             </>
           )}
           <input
+            ref={textInputRef}
             type="text"
             value={text}
             onChange={(e) => handleChange(e.target.value)}
@@ -510,6 +789,11 @@ export function ChatView({
             }
             disabled={unavailable || !canEncrypt}
             autoComplete="off"
+          />
+          <ComposerMediaButton
+            open={mediaTray.open}
+            disabled={unavailable || !canEncrypt}
+            onClick={mediaTray.toggle}
           />
           <button type="submit" disabled={unavailable || !canEncrypt || !text.trim()}>
             Send
@@ -607,6 +891,19 @@ function CamIcon() {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="13.5" r="3.25" stroke="currentColor" strokeWidth="1.75" />
+    </svg>
+  )
+}
+
+function PhoneIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6.5 3.75h3.1l1.2 4.2-1.9 1.1a12.5 12.5 0 0 0 5.95 5.95l1.1-1.9 4.2 1.2v3.1c0 .7-.55 1.25-1.25 1.25C10.7 18.65 5.35 13.3 5.35 6.5c0-.7.55-1.25 1.15-1.25z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

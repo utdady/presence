@@ -98,6 +98,10 @@ export class PresenceNearbyTauri implements PresenceNearbyPlugin {
     await invoke('nearby_send', { data: options.data })
   }
 
+  async setSpeakerphone(): Promise<void> {
+    /* Windows desktop has no earpiece route */
+  }
+
   async addListener(
     eventName: 'peerFound',
     listenerFunc: (peer: NearbyPeer) => void,

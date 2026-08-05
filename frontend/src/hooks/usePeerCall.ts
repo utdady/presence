@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  applySpeakerRoute,
+  canToggleSpeaker,
+  resetSpeakerRoute,
+} from '../callAudio'
 import type { CallStagePhase } from '../components/CallStage'
 
+export type CallMedia = 'audio' | 'video'
+
 export type HubCallSignal =
-  | { kind: 'call-offer'; fingerprint: string }
+  | { kind: 'call-offer'; fingerprint: string; media?: CallMedia }
   | { kind: 'call-answer' }
   | { kind: 'call-reject' }
   | { kind: 'call-end' }
@@ -21,236 +28,465 @@ interface UsePeerCallOptions {
   ) => () => void
 }
 
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+]
+
+function isSessionDesc(
+  s: RTCSessionDescriptionInit | RTCIceCandidateInit,
+): s is RTCSessionDescriptionInit {
+  return (
+    !!s &&
+    'type' in s &&
+    (s.type === 'offer' || s.type === 'answer') &&
+    typeof (s as RTCSessionDescriptionInit).sdp === 'string'
+  )
+}
+
+function isIceCandidate(
+  s: RTCSessionDescriptionInit | RTCIceCandidateInit,
+): s is RTCIceCandidateInit {
+  return !!s && typeof (s as RTCIceCandidateInit).candidate === 'string'
+}
+
+/** Plain JSON — RTCSessionDescription instances can stringify incompletely. */
+function toSdpInit(
+  desc: RTCSessionDescriptionInit | RTCSessionDescription | null,
+): RTCSessionDescriptionInit {
+  if (!desc?.type || !desc.sdp) {
+    throw new Error('Missing SDP')
+  }
+  return { type: desc.type, sdp: desc.sdp }
+}
+
 export function usePeerCall(opts: UsePeerCallOptions) {
   const [phase, setPhase] = useState<CallStagePhase>('idle')
+  const [media, setMedia] = useState<CallMedia>('audio')
   const [muted, setMuted] = useState(false)
+  const [cameraOff, setCameraOff] = useState(false)
+  const [speakerOn, setSpeakerOn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [remoteName, setRemoteName] = useState('')
+  const [offerReady, setOfferReady] = useState(false)
+  const speakerAvailable = canToggleSpeaker()
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const mediaGenRef = useRef(0)
   const mutedRef = useRef(false)
+  const cameraOffRef = useRef(false)
+  const speakerRef = useRef(false)
+  const mediaRef = useRef<CallMedia>('audio')
   const phaseRef = useRef<CallStagePhase>('idle')
-  const peerIdRef = useRef(opts.peerId)
+  const callPeerRef = useRef<string | null>(null)
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null)
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
+  const offerWaitersRef = useRef<Array<() => void>>([])
+  const makingOfferRef = useRef(false)
   const optsRef = useRef(opts)
   optsRef.current = opts
-  peerIdRef.current = opts.peerId
   phaseRef.current = phase
+  mediaRef.current = media
+
+  const attachRemoteMedia = useCallback(() => {
+    const stream = remoteStreamRef.current
+    if (!stream) return
+    const video = remoteVideoRef.current
+    const audio = remoteAudioRef.current
+    // Video calls: play A/V on the <video> only (dual elements glitch on some WebViews).
+    if (mediaRef.current === 'video' && video) {
+      if (video.srcObject !== stream) video.srcObject = stream
+      void video.play().catch(() => {})
+      if (audio) {
+        audio.srcObject = null
+        audio.pause()
+      }
+      return
+    }
+    if (audio && audio.srcObject !== stream) {
+      audio.srcObject = stream
+      void audio.play().catch(() => {})
+    }
+  }, [])
+
+  const attachLocalPreview = useCallback((stream: MediaStream | null) => {
+    const el = localVideoRef.current
+    if (!el) return
+    el.srcObject = stream
+    if (stream) void el.play().catch(() => {})
+  }, [])
+
+  const notifyOfferReady = useCallback(() => {
+    setOfferReady(true)
+    const waiters = offerWaitersRef.current.splice(0)
+    for (const w of waiters) w()
+  }, [])
+
+  const waitForRemoteOffer = useCallback((timeoutMs: number) => {
+    if (pendingOfferRef.current) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        offerWaitersRef.current = offerWaitersRef.current.filter((w) => w !== done)
+        reject(new Error('Call offer timed out — try again'))
+      }, timeoutMs)
+      const done = () => {
+        window.clearTimeout(timer)
+        resolve()
+      }
+      offerWaitersRef.current.push(done)
+      if (pendingOfferRef.current) {
+        offerWaitersRef.current = offerWaitersRef.current.filter((w) => w !== done)
+        window.clearTimeout(timer)
+        resolve()
+      }
+    })
+  }, [])
 
   const cleanup = useCallback(() => {
     mediaGenRef.current += 1
-    pcRef.current?.close()
+    makingOfferRef.current = false
+    const pc = pcRef.current
     pcRef.current = null
+    if (pc) {
+      pc.onicecandidate = null
+      pc.ontrack = null
+      pc.onconnectionstatechange = null
+      pc.close()
+    }
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
+    remoteStreamRef.current = null
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+    if (localVideoRef.current) localVideoRef.current.srcObject = null
     pendingOfferRef.current = null
     pendingIceRef.current = []
+    offerWaitersRef.current = []
+    callPeerRef.current = null
+    setOfferReady(false)
     setMuted(false)
     mutedRef.current = false
-  }, [])
-
-  const ensurePc = useCallback(async () => {
-    if (pcRef.current) return pcRef.current
-    const peerId = peerIdRef.current
-    if (!peerId) throw new Error('No peer')
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    })
-    pcRef.current = pc
-    pc.onicecandidate = (ev) => {
-      if (!ev.candidate || !peerIdRef.current) return
-      optsRef.current.sendSignal(peerIdRef.current, {
-        kind: 'webrtc-signal',
-        signal: ev.candidate.toJSON(),
-      })
-    }
-    pc.ontrack = (ev) => {
-      const audio = remoteAudioRef.current
-      if (!audio) return
-      audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track])
-      void audio.play().catch(() => {})
-    }
-    const gen = ++mediaGenRef.current
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    if (gen !== mediaGenRef.current) {
-      stream.getTracks().forEach((t) => t.stop())
-      throw new Error('Call cancelled')
-    }
-    localStreamRef.current = stream
-    for (const track of stream.getTracks()) pc.addTrack(track, stream)
-    return pc
+    setCameraOff(false)
+    cameraOffRef.current = false
+    speakerRef.current = false
+    setSpeakerOn(false)
+    setMedia('audio')
+    mediaRef.current = 'audio'
+    void resetSpeakerRoute()
   }, [])
 
   const flushPendingIce = useCallback(async (pc: RTCPeerConnection) => {
-    const pending = pendingIceRef.current
-    pendingIceRef.current = []
+    const pending = pendingIceRef.current.splice(0)
     for (const c of pending) {
       try {
         await pc.addIceCandidate(c)
       } catch {
-        /* ignore */
+        /* ignore stale */
       }
     }
   }, [])
 
-  useEffect(() => {
-    return opts.onRemoteSignal((from, signal) => {
-      if (optsRef.current.peerId && from !== optsRef.current.peerId) {
-        // Still accept incoming offers from other peers when idle
-        if (phaseRef.current !== 'idle') return
-        const isOffer =
-          signal.kind === 'call-offer' ||
-          (signal.kind === 'webrtc-signal' &&
-            'type' in signal.signal &&
-            signal.signal.type === 'offer')
-        if (!isOffer) return
+  const ensurePc = useCallback(
+    async (wantVideo: boolean) => {
+      if (pcRef.current) return pcRef.current
+      const peerId = callPeerRef.current
+      if (!peerId) throw new Error('No peer')
+
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      pcRef.current = pc
+
+      pc.onicecandidate = (ev) => {
+        const to = callPeerRef.current
+        if (!ev.candidate || !to) return
+        optsRef.current.sendSignal(to, {
+          kind: 'webrtc-signal',
+          signal: ev.candidate.toJSON(),
+        })
       }
+
+      pc.ontrack = (ev) => {
+        const inbound = ev.streams[0]
+        if (inbound) {
+          remoteStreamRef.current = inbound
+        } else {
+          if (!remoteStreamRef.current) {
+            remoteStreamRef.current = new MediaStream()
+          }
+          if (!remoteStreamRef.current.getTracks().includes(ev.track)) {
+            remoteStreamRef.current.addTrack(ev.track)
+          }
+        }
+        attachRemoteMedia()
+      }
+
+      pc.onconnectionstatechange = () => {
+        if (pc !== pcRef.current) return
+        if (pc.connectionState === 'failed') {
+          setError('Could not connect — check network / try again')
+          // Don't auto-teardown immediately; leave UI so user can End.
+        }
+      }
+
+      const gen = ++mediaGenRef.current
+      let stream: MediaStream
+      try {
+        // Soft constraints — hard 720p ideals fail on many phones / WebViews.
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: wantVideo ? { facingMode: 'user' } : false,
+        })
+      } catch (e) {
+        if (wantVideo) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: true,
+            })
+          } catch (e2) {
+            if (pcRef.current === pc) {
+              pcRef.current = null
+              pc.close()
+            }
+            const msg =
+              e2 instanceof Error ? e2.message : 'Camera / mic permission denied'
+            throw new Error(msg)
+          }
+        } else {
+          if (pcRef.current === pc) {
+            pcRef.current = null
+            pc.close()
+          }
+          throw e
+        }
+      }
+      if (gen !== mediaGenRef.current || pcRef.current !== pc) {
+        stream.getTracks().forEach((t) => t.stop())
+        throw new Error('Call cancelled')
+      }
+      localStreamRef.current = stream
+      if (wantVideo) attachLocalPreview(stream)
+      for (const track of stream.getTracks()) pc.addTrack(track, stream)
+      return pc
+    },
+    [attachLocalPreview, attachRemoteMedia],
+  )
+
+  useEffect(() => {
+    return optsRef.current.onRemoteSignal((from, signal) => {
       void (async () => {
+        // Once a call peer is chosen, only that peer's signals apply.
+        // Never gate on the open chat — that dropped SDP/ICE after ringtone.
+        if (callPeerRef.current && from !== callPeerRef.current) return
+
         if (signal.kind === 'call-offer') {
+          if (phaseRef.current !== 'idle' && phaseRef.current !== 'incoming') {
+            // Busy — reject politely
+            optsRef.current.sendSignal(from, { kind: 'call-reject' })
+            return
+          }
+          const m: CallMedia = signal.media === 'video' ? 'video' : 'audio'
+          mediaRef.current = m
+          setMedia(m)
           setRemoteName(from)
-          peerIdRef.current = from
+          callPeerRef.current = from
+          setOfferReady(!!pendingOfferRef.current)
           setPhase('incoming')
+          phaseRef.current = 'incoming'
           return
         }
+
         if (signal.kind === 'call-reject' || signal.kind === 'call-end') {
           cleanup()
           setPhase('idle')
+          phaseRef.current = 'idle'
           return
         }
+
         if (signal.kind === 'call-answer') {
-          if (phaseRef.current !== 'outgoing') return
-          setPhase('in_call')
-          return
-        }
-        if (signal.kind === 'webrtc-signal') {
-          const s = signal.signal
-          // Buffer SDP/ICE until the user accepts — do not open mic early.
-          // Also buffer while idle in case the offer races ahead of call-offer.
-          if (
-            phaseRef.current === 'incoming' ||
-            phaseRef.current === 'idle'
-          ) {
-            if ('candidate' in s && s.candidate !== undefined) {
-              pendingIceRef.current.push(s as RTCIceCandidateInit)
-              return
-            }
-            if ('type' in s && s.type === 'offer') {
-              pendingOfferRef.current = s as RTCSessionDescriptionInit
-              if (phaseRef.current === 'idle') {
-                setRemoteName(from)
-                peerIdRef.current = from
-                setPhase('incoming')
-              }
-            }
-            return
-          }
           if (phaseRef.current !== 'outgoing' && phaseRef.current !== 'in_call') {
             return
           }
+          setPhase('in_call')
+          phaseRef.current = 'in_call'
+          return
+        }
+
+        if (signal.kind !== 'webrtc-signal') return
+        const s = signal.signal
+
+        // --- SDP offer (callee buffers until Accept) ---
+        if (isSessionDesc(s) && s.type === 'offer') {
+          if (!callPeerRef.current) callPeerRef.current = from
+          setRemoteName((n) => n || from)
+          pendingOfferRef.current = s
+          if (phaseRef.current === 'idle') {
+            setPhase('incoming')
+            phaseRef.current = 'incoming'
+          }
+          notifyOfferReady()
+          return
+        }
+
+        // Buffer ICE until we have a PC *and* a remote description.
+        // (Caller often receives callee ICE before the answer SDP.)
+        if (isIceCandidate(s)) {
           const pc = pcRef.current
-          if (!pc) {
-            if ('candidate' in s && s.candidate !== undefined) {
-              pendingIceRef.current.push(s as RTCIceCandidateInit)
-            } else if ('type' in s && s.type === 'offer') {
-              pendingOfferRef.current = s as RTCSessionDescriptionInit
-            }
+          if (!pc || !pc.remoteDescription) {
+            pendingIceRef.current.push(s)
             return
           }
-          if ('candidate' in s && s.candidate !== undefined) {
-            try {
-              await pc.addIceCandidate(s as RTCIceCandidateInit)
-            } catch {
-              /* ignore */
-            }
-            return
+          try {
+            await pc.addIceCandidate(s)
+          } catch {
+            /* ignore stale */
           }
-          if ('type' in s && (s.type === 'offer' || s.type === 'answer')) {
-            const desc = s as RTCSessionDescriptionInit
-            if (desc.type === 'answer') {
-              await pc.setRemoteDescription(desc)
-              await flushPendingIce(pc)
-            }
+          return
+        }
+
+        if (isSessionDesc(s) && s.type === 'answer') {
+          const pc = pcRef.current
+          if (!pc) return
+          if (
+            pc.signalingState === 'have-local-offer' ||
+            pc.signalingState === 'have-remote-pranswer'
+          ) {
+            await pc.setRemoteDescription(s)
+            await flushPendingIce(pc)
+            setPhase('in_call')
+            phaseRef.current = 'in_call'
+            window.setTimeout(() => attachRemoteMedia(), 50)
           }
         }
       })()
     })
-  }, [cleanup, flushPendingIce, opts])
+  }, [attachRemoteMedia, cleanup, flushPendingIce, notifyOfferReady])
 
   useEffect(() => () => cleanup(), [cleanup])
 
-  const startCall = useCallback(async () => {
-    const peerId = optsRef.current.peerId
-    if (!peerId || !optsRef.current.peerOnline) {
-      setError('Peer is offline')
-      return
-    }
-    setError(null)
-    setPhase('outgoing')
-    setRemoteName(peerId)
-    try {
-      optsRef.current.sendSignal(peerId, {
-        kind: 'call-offer',
-        fingerprint: optsRef.current.myFingerprint,
-      })
-      const pc = await ensurePc()
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      optsRef.current.sendSignal(peerId, {
-        kind: 'webrtc-signal',
-        signal: offer,
-      })
-    } catch (e) {
-      cleanup()
-      setError(e instanceof Error ? e.message : 'Call failed')
-      setPhase('idle')
-    }
-  }, [cleanup, ensurePc])
+  const startCall = useCallback(
+    async (want: CallMedia = 'audio') => {
+      const peerId = optsRef.current.peerId
+      if (!peerId || !optsRef.current.peerOnline) {
+        setError('Peer is offline')
+        return
+      }
+      if (phaseRef.current !== 'idle') return
+      setError(null)
+      mediaRef.current = want
+      setMedia(want)
+      callPeerRef.current = peerId
+      setRemoteName(peerId)
+      setOfferReady(false)
+      setPhase('outgoing')
+      phaseRef.current = 'outgoing'
+      try {
+        makingOfferRef.current = true
+        const pc = await ensurePc(want === 'video')
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: want === 'video',
+        })
+        await pc.setLocalDescription(offer)
+        const local = toSdpInit(pc.localDescription ?? offer)
+        makingOfferRef.current = false
+        // Ring + SDP together so Accept never races an empty offer.
+        const okRing = optsRef.current.sendSignal(peerId, {
+          kind: 'call-offer',
+          fingerprint: optsRef.current.myFingerprint,
+          media: want,
+        })
+        const okSdp = optsRef.current.sendSignal(peerId, {
+          kind: 'webrtc-signal',
+          signal: local,
+        })
+        if (!okRing || !okSdp) {
+          throw new Error('Could not reach peer — no session key yet')
+        }
+      } catch (e) {
+        makingOfferRef.current = false
+        cleanup()
+        setError(e instanceof Error ? e.message : 'Call failed')
+        setPhase('idle')
+        phaseRef.current = 'idle'
+      }
+    },
+    [cleanup, ensurePc],
+  )
 
   const acceptCall = useCallback(async () => {
-    const peerId = peerIdRef.current
+    const peerId = callPeerRef.current
     if (!peerId) return
+    if (phaseRef.current !== 'incoming') return
     setError(null)
     try {
-      optsRef.current.sendSignal(peerId, { kind: 'call-answer' })
-      const pc = await ensurePc()
+      await waitForRemoteOffer(25_000)
       const offer = pendingOfferRef.current
+      if (!offer) throw new Error('No offer yet — try again')
       pendingOfferRef.current = null
-      if (!offer) {
-        throw new Error('No offer yet — try again')
+
+      const wantVideo = mediaRef.current === 'video'
+      const pc = await ensurePc(wantVideo)
+
+      if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
+        // Already processing
       }
-      await pc.setRemoteDescription(offer)
+      await pc.setRemoteDescription(toSdpInit(offer))
+      await flushPendingIce(pc)
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
-      optsRef.current.sendSignal(peerId, {
+      const local = toSdpInit(pc.localDescription ?? answer)
+
+      const okSdp = optsRef.current.sendSignal(peerId, {
         kind: 'webrtc-signal',
-        signal: answer,
+        signal: local,
       })
-      await flushPendingIce(pc)
+      const okAns = optsRef.current.sendSignal(peerId, { kind: 'call-answer' })
+      if (!okSdp || !okAns) throw new Error('Could not reach peer — no session key yet')
+
       setPhase('in_call')
+      phaseRef.current = 'in_call'
+      attachRemoteMedia()
+      attachLocalPreview(localStreamRef.current)
+      window.setTimeout(() => {
+        attachRemoteMedia()
+        attachLocalPreview(localStreamRef.current)
+      }, 120)
     } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Accept failed'
       cleanup()
-      setError(e instanceof Error ? e.message : 'Accept failed')
+      setError(msg)
       setPhase('idle')
+      phaseRef.current = 'idle'
     }
-  }, [cleanup, ensurePc, flushPendingIce])
+  }, [
+    attachLocalPreview,
+    attachRemoteMedia,
+    cleanup,
+    ensurePc,
+    flushPendingIce,
+    waitForRemoteOffer,
+  ])
 
   const rejectCall = useCallback(() => {
-    const peerId = peerIdRef.current
+    const peerId = callPeerRef.current
     if (peerId) optsRef.current.sendSignal(peerId, { kind: 'call-reject' })
     cleanup()
     setPhase('idle')
+    phaseRef.current = 'idle'
   }, [cleanup])
 
   const endCall = useCallback(() => {
-    const peerId = peerIdRef.current
+    const peerId = callPeerRef.current
     if (peerId) optsRef.current.sendSignal(peerId, { kind: 'call-end' })
     cleanup()
     setPhase('idle')
+    phaseRef.current = 'idle'
   }, [cleanup])
 
   const toggleMute = useCallback(() => {
@@ -262,13 +498,56 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     })
   }, [])
 
-  const setRemoteAudioEl = useCallback((el: HTMLAudioElement | null) => {
-    remoteAudioRef.current = el
+  const toggleCamera = useCallback(() => {
+    if (mediaRef.current !== 'video') return
+    const next = !cameraOffRef.current
+    cameraOffRef.current = next
+    setCameraOff(next)
+    localStreamRef.current?.getVideoTracks().forEach((t) => {
+      t.enabled = !next
+    })
   }, [])
+
+  const toggleSpeaker = useCallback(() => {
+    const next = !speakerRef.current
+    speakerRef.current = next
+    setSpeakerOn(next)
+    void applySpeakerRoute(remoteAudioRef.current, next)
+  }, [])
+
+  const setRemoteAudioEl = useCallback(
+    (el: HTMLAudioElement | null) => {
+      remoteAudioRef.current = el
+      attachRemoteMedia()
+      if (el && speakerRef.current) void applySpeakerRoute(el, true)
+    },
+    [attachRemoteMedia],
+  )
+
+  const setRemoteVideoEl = useCallback(
+    (el: HTMLVideoElement | null) => {
+      remoteVideoRef.current = el
+      attachRemoteMedia()
+    },
+    [attachRemoteMedia],
+  )
+
+  const setLocalVideoEl = useCallback(
+    (el: HTMLVideoElement | null) => {
+      localVideoRef.current = el
+      if (el && localStreamRef.current) attachLocalPreview(localStreamRef.current)
+    },
+    [attachLocalPreview],
+  )
 
   return {
     phase,
+    media,
     muted,
+    cameraOff,
+    speakerOn,
+    speakerAvailable,
+    offerReady,
     error,
     remoteName,
     startCall,
@@ -276,6 +555,10 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     rejectCall,
     endCall,
     toggleMute,
+    toggleCamera,
+    toggleSpeaker,
     setRemoteAudioEl,
+    setRemoteVideoEl,
+    setLocalVideoEl,
   }
 }

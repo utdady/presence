@@ -9,7 +9,15 @@ import { useLanNearbyCall } from './useLanNearbyCall'
 import { useNearbyCall } from './useNearbyCall'
 import { PermissionPrime } from '../components/PermissionPrime'
 import { CallStage } from '../components/CallStage'
+import {
+  ComposerMediaButton,
+  ComposerMediaTray,
+  useComposerMediaTray,
+} from '../components/ComposerMediaTray'
+import { EmojiPicker } from '../components/EmojiPicker'
 import { VoiceBubble } from '../components/VoiceBubble'
+import { QUICK_REACTIONS } from '../emojiData'
+import { useEdgeSwipeBack } from '../navigation/useBackStack'
 
 interface Props {
   userId: string
@@ -67,6 +75,11 @@ function NativeNearbyUI({
   const [micPrime, setMicPrime] = useState(false)
   const pendingMicAction = useRef<null | (() => void)>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEdgeSwipeBack(true, () => {
+    void call.stopScanning()
+    onBack()
+  })
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
@@ -214,7 +227,9 @@ function NativeNearbyUI({
           fingerprint={call.remoteFingerprint}
           recordingNote={call.recordingNote}
           fileTransfer={call.fileTransfer}
-          onSend={(text) => void call.sendChat(text)}
+          onSend={(text, replyTo) => void call.sendChat(text, replyTo)}
+          onReact={(msgId, emoji) => void call.sendReaction(msgId, emoji)}
+          onSendSticker={(b64, mime) => void call.sendStickerMsg(b64, mime)}
           onStartVoice={() =>
             void withMicPrime(() => void call.startVoiceNote())
           }
@@ -245,11 +260,14 @@ function NativeNearbyUI({
             : 'Bluetooth'
         }
         muted={call.muted}
+        speakerOn={call.speakerOn}
+        speakerAvailable={call.speakerAvailable}
         catchingUp={call.catchingUp}
         onAccept={() => void withMicPrime(() => void call.acceptCall())}
         onReject={() => void call.rejectCall()}
         onEnd={() => void call.endCall()}
         onToggleMute={call.toggleMute}
+        onToggleSpeaker={call.toggleSpeaker}
       />
     </div>
   )
@@ -268,6 +286,11 @@ function LanNearbyUI({
   const [showOnlineRooms, setShowOnlineRooms] = useState(false)
   const [micPrime, setMicPrime] = useState(false)
   const pendingMicAction = useRef<null | (() => void)>(null)
+
+  useEdgeSwipeBack(true, () => {
+    call.leaveRoom()
+    onBack()
+  })
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
@@ -425,6 +448,8 @@ function LanNearbyUI({
   )
 }
 
+type NearbyReply = { msg_id: string; preview: string; from: string }
+
 function NearbyChatPanel({
   messages,
   peerName,
@@ -432,6 +457,8 @@ function NearbyChatPanel({
   recordingNote,
   fileTransfer,
   onSend,
+  onReact,
+  onSendSticker,
   onStartVoice,
   onStopVoice,
   onCancelVoice,
@@ -444,7 +471,9 @@ function NearbyChatPanel({
   fingerprint?: string | null
   recordingNote?: boolean
   fileTransfer?: { name: string; sent: number; total: number } | null
-  onSend: (text: string) => void
+  onSend: (text: string, replyTo?: NearbyReply) => void
+  onReact?: (msgId: string, emoji: string) => void
+  onSendSticker?: (imageB64: string, mime: string) => void
   onStartVoice?: () => void
   onStopVoice?: () => void
   onCancelVoice?: () => void
@@ -453,7 +482,12 @@ function NearbyChatPanel({
   onLeave?: () => void
 }) {
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<NearbyReply | null>(null)
+  const mediaTray = useComposerMediaTray('emoji')
+  const [menuId, setMenuId] = useState<string | null>(null)
+  const [reactMore, setReactMore] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const longPressTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     const el = listRef.current
@@ -465,12 +499,23 @@ function NearbyChatPanel({
     e.preventDefault()
     const text = draft.trim()
     if (!text) return
-    onSend(text)
+    onSend(text, replyTo ?? undefined)
     setDraft('')
+    setReplyTo(null)
+  }
+
+  function previewOf(m: NearbyChatMessage): string {
+    if (m.kind === 'sticker') return 'Sticker'
+    if (m.kind === 'voice') return 'Voice message'
+    if (m.kind === 'file') return m.file_name || 'File'
+    return (m.text || '').slice(0, 80)
   }
 
   return (
-    <div className="nearby-chat nearby-chat--main">
+    <div
+      className="nearby-chat nearby-chat--main"
+      onClick={() => setMenuId(null)}
+    >
       <div className="nearby-chat-toolbar">
         <div>
           <p className="nearby-chat-label">
@@ -494,15 +539,44 @@ function NearbyChatPanel({
             <div
               key={m.id}
               className={`nearby-chat-bubble${m.mine ? ' nearby-chat-bubble--mine' : ''}`}
+              onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setMenuId(m.id)
+              }}
+              onTouchStart={() => {
+                longPressTimer.current = window.setTimeout(
+                  () => setMenuId(m.id),
+                  400,
+                )
+              }}
+              onTouchEnd={() => {
+                if (longPressTimer.current) {
+                  window.clearTimeout(longPressTimer.current)
+                  longPressTimer.current = undefined
+                }
+              }}
             >
               {!m.mine && (
                 <span className="nearby-chat-from">{m.fromName}</span>
+              )}
+              {m.reply_to && (
+                <div className="msg-reply-quote">
+                  <span>{m.reply_to.preview}</span>
+                </div>
               )}
               {m.kind === 'voice' && m.audio_b64 && m.audio_mime ? (
                 <VoiceBubble
                   audioB64={m.audio_b64}
                   mime={m.audio_mime}
                   durationMs={m.duration_ms ?? 1000}
+                />
+              ) : m.kind === 'sticker' && m.image_b64 ? (
+                <img
+                  className="sticker-bubble-img"
+                  src={`data:${m.sticker_mime || 'image/jpeg'};base64,${m.image_b64}`}
+                  alt="Sticker"
+                  draggable={false}
                 />
               ) : m.kind === 'file' && m.file_b64 ? (
                 <a
@@ -518,10 +592,97 @@ function NearbyChatPanel({
               ) : (
                 <p>{m.text}</p>
               )}
+              {m.reactions && Object.keys(m.reactions).length > 0 && (
+                <div className="msg-reactions">
+                  {Object.values(m.reactions).map((emoji, i) => (
+                    <span key={`${m.id}-r-${i}`}>{emoji}</span>
+                  ))}
+                </div>
+              )}
+              {menuId === m.id && (
+                <div className="msg-context-menu">
+                  {onReact && (
+                    <>
+                      <div className="reaction-picker">
+                        {QUICK_REACTIONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              onReact(m.id, emoji)
+                              setMenuId(null)
+                              setReactMore(false)
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="reaction-more"
+                          onClick={() => setReactMore((v) => !v)}
+                          aria-label="More reactions"
+                        >
+                          ＋
+                        </button>
+                      </div>
+                      {reactMore && (
+                        <EmojiPicker
+                          onPick={(g) => {
+                            onReact(m.id, g)
+                            setMenuId(null)
+                            setReactMore(false)
+                          }}
+                          onClose={() => setReactMore(false)}
+                        />
+                      )}
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className="msg-context-reply"
+                    onClick={() => {
+                      setReplyTo({
+                        msg_id: m.id,
+                        preview: previewOf(m),
+                        from: m.fromName,
+                      })
+                      setMenuId(null)
+                      setReactMore(false)
+                    }}
+                  >
+                    Reply
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
+      {replyTo && (
+        <div className="composer-reply">
+          <div>
+            <span className="composer-reply-label">Replying</span>
+            <span className="composer-reply-preview">{replyTo.preview}</span>
+          </div>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => setReplyTo(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <ComposerMediaTray
+        open={mediaTray.open}
+        tab={mediaTray.tab}
+        onTabChange={mediaTray.setTab}
+        onClose={mediaTray.close}
+        onPickEmoji={(g) => setDraft((d) => d + g)}
+        onSendSticker={onSendSticker}
+        stickersEnabled={!!onSendSticker}
+      />
       {fileTransfer && (
         <div className="nearby-chat-transfer">
           <span>
@@ -576,6 +737,10 @@ function NearbyChatPanel({
           placeholder="Message…"
           maxLength={2000}
           autoComplete="off"
+        />
+        <ComposerMediaButton
+          open={mediaTray.open}
+          onClick={mediaTray.toggle}
         />
         <button type="submit" disabled={!draft.trim()}>
           Send
