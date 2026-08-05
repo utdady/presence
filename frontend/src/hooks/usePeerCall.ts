@@ -94,23 +94,25 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   phaseRef.current = phase
   mediaRef.current = media
 
+  /** Route earpiece vs speaker. Voice defaults earpiece until user enables speaker. */
+  const applyOutputRoute = useCallback(() => {
+    void applySpeakerRoute(remoteAudioRef.current, speakerRef.current)
+  }, [])
+
   const attachRemoteMedia = useCallback(() => {
     const stream = remoteStreamRef.current
     if (!stream) return
     const video = remoteVideoRef.current
     const audio = remoteAudioRef.current
-    // Video calls: play A/V on the <video> only (dual elements glitch on some WebViews).
+    // Split for autoplay: muted <video> paints frames; <audio> plays sound.
     if (mediaRef.current === 'video' && video) {
       if (video.srcObject !== stream) video.srcObject = stream
+      video.muted = true
+      video.setAttribute('playsinline', 'true')
       void video.play().catch(() => {})
-      if (audio) {
-        audio.srcObject = null
-        audio.pause()
-      }
-      return
     }
-    if (audio && audio.srcObject !== stream) {
-      audio.srcObject = stream
+    if (audio) {
+      if (audio.srcObject !== stream) audio.srcObject = stream
       void audio.play().catch(() => {})
     }
   }, [])
@@ -118,9 +120,33 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   const attachLocalPreview = useCallback((stream: MediaStream | null) => {
     const el = localVideoRef.current
     if (!el) return
-    el.srcObject = stream
+    if (el.srcObject !== stream) el.srcObject = stream
+    el.muted = true
+    el.setAttribute('playsinline', 'true')
     if (stream) void el.play().catch(() => {})
   }, [])
+
+  const enterInCall = useCallback(() => {
+    setPhase('in_call')
+    phaseRef.current = 'in_call'
+    // Voice: force earpiece (loudspeaker only after user tap). Video: keep current route.
+    if (mediaRef.current === 'audio') {
+      speakerRef.current = false
+      setSpeakerOn(false)
+    } else {
+      // Hands-free is the useful default for video.
+      speakerRef.current = true
+      setSpeakerOn(true)
+    }
+    applyOutputRoute()
+    attachRemoteMedia()
+    attachLocalPreview(localStreamRef.current)
+    window.setTimeout(() => {
+      attachRemoteMedia()
+      attachLocalPreview(localStreamRef.current)
+      applyOutputRoute()
+    }, 120)
+  }, [applyOutputRoute, attachLocalPreview, attachRemoteMedia])
 
   const notifyOfferReady = useCallback(() => {
     setOfferReady(true)
@@ -312,8 +338,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
           if (phaseRef.current !== 'outgoing' && phaseRef.current !== 'in_call') {
             return
           }
-          setPhase('in_call')
-          phaseRef.current = 'in_call'
+          enterInCall()
           return
         }
 
@@ -358,14 +383,12 @@ export function usePeerCall(opts: UsePeerCallOptions) {
           ) {
             await pc.setRemoteDescription(s)
             await flushPendingIce(pc)
-            setPhase('in_call')
-            phaseRef.current = 'in_call'
-            window.setTimeout(() => attachRemoteMedia(), 50)
+            enterInCall()
           }
         }
       })()
     })
-  }, [attachRemoteMedia, cleanup, flushPendingIce, notifyOfferReady])
+  }, [attachRemoteMedia, cleanup, enterInCall, flushPendingIce, notifyOfferReady])
 
   useEffect(() => () => cleanup(), [cleanup])
 
@@ -408,6 +431,9 @@ export function usePeerCall(opts: UsePeerCallOptions) {
         if (!okRing || !okSdp) {
           throw new Error('Could not reach peer — no session key yet')
         }
+        // Local self-view may mount after getUserMedia resolves.
+        attachLocalPreview(localStreamRef.current)
+        window.setTimeout(() => attachLocalPreview(localStreamRef.current), 120)
       } catch (e) {
         makingOfferRef.current = false
         cleanup()
@@ -416,7 +442,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
         phaseRef.current = 'idle'
       }
     },
-    [cleanup, ensurePc],
+    [attachLocalPreview, cleanup, ensurePc],
   )
 
   const acceptCall = useCallback(async () => {
@@ -433,9 +459,6 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       const wantVideo = mediaRef.current === 'video'
       const pc = await ensurePc(wantVideo)
 
-      if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
-        // Already processing
-      }
       await pc.setRemoteDescription(toSdpInit(offer))
       await flushPendingIce(pc)
       const answer = await pc.createAnswer()
@@ -449,14 +472,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       const okAns = optsRef.current.sendSignal(peerId, { kind: 'call-answer' })
       if (!okSdp || !okAns) throw new Error('Could not reach peer — no session key yet')
 
-      setPhase('in_call')
-      phaseRef.current = 'in_call'
-      attachRemoteMedia()
-      attachLocalPreview(localStreamRef.current)
-      window.setTimeout(() => {
-        attachRemoteMedia()
-        attachLocalPreview(localStreamRef.current)
-      }, 120)
+      enterInCall()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Accept failed'
       cleanup()
@@ -465,10 +481,9 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       phaseRef.current = 'idle'
     }
   }, [
-    attachLocalPreview,
-    attachRemoteMedia,
     cleanup,
     ensurePc,
+    enterInCall,
     flushPendingIce,
     waitForRemoteOffer,
   ])
@@ -519,7 +534,10 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     (el: HTMLAudioElement | null) => {
       remoteAudioRef.current = el
       attachRemoteMedia()
-      if (el && speakerRef.current) void applySpeakerRoute(el, true)
+      // Always re-apply route so Android earpiece is forced, not only when speaker is on.
+      if (el && phaseRef.current === 'in_call') {
+        void applySpeakerRoute(el, speakerRef.current)
+      }
     },
     [attachRemoteMedia],
   )
@@ -527,7 +545,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   const setRemoteVideoEl = useCallback(
     (el: HTMLVideoElement | null) => {
       remoteVideoRef.current = el
-      attachRemoteMedia()
+      if (el) attachRemoteMedia()
     },
     [attachRemoteMedia],
   )

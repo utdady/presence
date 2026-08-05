@@ -749,8 +749,20 @@ public class PresenceNearbyPlugin extends Plugin {
             call.reject("No AudioManager");
             return;
         }
+        // Voice path: MODE_IN_COMMUNICATION + speaker off = earpiece / handset.
         am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        // setSpeakerphoneOn is deprecated but still the reliable WebView path.
         am.setSpeakerphoneOn(on);
+        if (!on) {
+            // Some devices ignore the first false; reassert after a tick.
+            mainHandler.post(() -> {
+                try {
+                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    am.setSpeakerphoneOn(false);
+                } catch (Exception ignored) {
+                }
+            });
+        }
         call.resolve();
     }
 

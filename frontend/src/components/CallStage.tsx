@@ -116,6 +116,7 @@ export function CallStage({
             className="call-stage-remote-video"
             autoPlay
             playsInline
+            muted
           />
           <video
             ref={localRef}
