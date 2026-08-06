@@ -20,6 +20,7 @@ import { keyFingerprint } from '../crypto'
 import { usePeerCall } from '../hooks/usePeerCall'
 import { useBackStack } from '../navigation/useBackStack'
 import { usePresenceSession } from '../usePresenceSession'
+import { formatVersionLabel, APP_PRODUCT } from '../appVersion'
 
 export function AppShell() {
   const { user, token, publicKey, privateKey, logout } = useAuth()
@@ -433,7 +434,7 @@ function PresenceInner({
                   className="sidebar-settings-action"
                   onClick={() => openApkDownload(apkUpdate.downloadUrl)}
                 >
-                  Update APK (build {apkUpdate.latestBuild})
+                  Update APK ({apkUpdate.latestLabel})
                 </button>
               )}
               {selfImage && (
@@ -453,6 +454,9 @@ function PresenceInner({
               >
                 Sign out
               </button>
+              <p className="sidebar-settings-version" aria-label="App version">
+                {APP_PRODUCT} · {formatVersionLabel()}
+              </p>
             </div>
           )}
         </footer>

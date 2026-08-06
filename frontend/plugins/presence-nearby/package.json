@@ -1,6 +1,6 @@
 {
   "name": "presence-nearby",
-  "version": "0.1.0",
+  "version": "0.16.0",
   "description": "Capacitor plugin for Presence offline Bluetooth nearby chat",
   "main": "src/index.ts",
   "module": "src/index.ts",

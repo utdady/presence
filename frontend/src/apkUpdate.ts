@@ -1,18 +1,26 @@
 import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
+import { formatVersionLabel, marketingVersion } from './appVersion'
 
 const REPO = 'utdady/presence'
 const DISMISS_KEY = 'presence_apk_update_dismissed'
 
 export type ApkUpdateInfo = {
+  /** Integer versionCode (compare with this only). */
   installedBuild: number
   latestBuild: number
+  installedLabel: string
+  latestLabel: string
   downloadUrl: string
   releaseUrl: string
 }
 
+/** Parse integer versionCode from release notes / title. */
 function parseVersionCode(text: string): number | null {
-  const m = text.match(/versionCode:\s*(\d+)/i) ?? text.match(/build\s+(\d+)/i)
+  const m =
+    text.match(/versionCode:\s*(\d+)/i) ??
+    text.match(/build\s+(\d+)\b/i) ??
+    text.match(/\b0\.(\d+)\b/)
   if (!m) return null
   const n = Number(m[1])
   return Number.isFinite(n) && n > 0 ? n : null
@@ -59,6 +67,11 @@ export async function checkApkUpdate(): Promise<ApkUpdateInfo | null> {
   return {
     installedBuild,
     latestBuild,
+    installedLabel:
+      installedBuild > 0
+        ? formatVersionLabel(installedBuild)
+        : 'unknown',
+    latestLabel: formatVersionLabel(latestBuild),
     downloadUrl,
     releaseUrl:
       release.html_url ?? `https://github.com/${REPO}/releases/latest`,
@@ -85,3 +98,5 @@ export function dismissUpdate(latestBuild: number): void {
 export function openApkDownload(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
+
+export { marketingVersion }

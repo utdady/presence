@@ -41,13 +41,15 @@ jobs:
       - name: Assemble debug APK
         working-directory: frontend/android
         env:
+          # Integer versionCode (must increase). Marketing versionName is 0.$N (beta).
           VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 0.${{ github.run_number }}
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon \
             -PpresenceVersionCode=$VERSION_CODE \
-            -PpresenceVersionName=$VERSION_CODE
+            -PpresenceVersionName=$VERSION_NAME
 
       - name: Stage APK
         run: |
@@ -65,19 +67,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ github.sha }}
-          name: Presence Android APK (build ${{ github.run_number }})
+          name: Presence Beta 0.${{ github.run_number }}
           body: |
+            **Presence · Beta**
             versionCode: ${{ github.run_number }}
+            versionName: 0.${{ github.run_number }}
 
-            Sideload APK for Presence (debug).
+            Pre-1.0 beta build. Sideload APK for Presence.
 
             Install on Android, then open the app — the UI loads from production
             (`https://presence-addy.fly.dev`) so web deploys apply automatically.
 
-            The in-app updater compares this `versionCode` to the installed APK
-            and prompts when a newer build is available.
+            The in-app updater compares `versionCode` (integer) to the installed
+            APK and prompts when a newer build is available. Displayed as **0.N · Beta**.
 
-            Rebuild this APK only when native/Bluetooth plugin code changes.
+            Rebuild this APK when native/Bluetooth or packaging changes.
           files: releases/presence-debug.apk
           make_latest: true
         env:

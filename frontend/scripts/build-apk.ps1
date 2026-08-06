@@ -51,8 +51,13 @@ npx cap sync android
 if ($LASTEXITCODE -ne 0) { throw "cap sync failed" }
 
 Set-Location (Join-Path $FrontendRoot "android")
-Write-Host ">> gradlew assembleDebug"
-.\gradlew.bat assembleDebug --no-daemon
+# Local default matches last known beta revision; CI overrides via -P flags.
+$localCode = if ($env:PRESENCE_VERSION_CODE) { $env:PRESENCE_VERSION_CODE } else { "16" }
+$localName = if ($env:PRESENCE_VERSION_NAME) { $env:PRESENCE_VERSION_NAME } else { "0.$localCode" }
+Write-Host ">> gradlew assembleDebug (versionCode=$localCode versionName=$localName)"
+.\gradlew.bat assembleDebug --no-daemon `
+  "-PpresenceVersionCode=$localCode" `
+  "-PpresenceVersionName=$localName"
 if ($LASTEXITCODE -ne 0) { throw "gradle build failed" }
 
 $built = Join-Path $FrontendRoot "android\app\build\outputs\apk\debug\app-debug.apk"

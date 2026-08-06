@@ -93,10 +93,10 @@ Get-Content -Raw backend/users.json | fly secrets set USERS_JSON=-
 - **Web UI:** the Capacitor app loads `https://presence-addy.fly.dev`, so `fly deploy`
   updates sign-in, chat UI, and settings without reinstalling.
 - **Native Bluetooth plugin:** still needs a new APK. GitHub Actions builds
-  `presence-debug.apk` on every `main` push (with an incrementing `versionCode`)
-  and publishes it under
-  [Releases](https://github.com/utdady/presence/releases/latest).
-  On the Android app, a banner appears when a newer build is available; Settings
+  `presence-debug.apk` on every `main` push. Android `versionCode` is the integer
+  CI run number (16, 17, …); `versionName` is the marketing **0.N · Beta** form
+  (e.g. `0.16`). Releases are titled **Presence Beta 0.N**.
+- On the Android app, a banner appears when a newer `versionCode` is available; Settings
   also shows **Update APK**. Tap download, then install when Android prompts
   (sideloaded apps cannot install silently).
 - Or grab the file manually:

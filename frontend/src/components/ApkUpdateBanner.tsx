@@ -11,8 +11,8 @@ export function ApkUpdateBanner({
   return (
     <div className="apk-update-banner" role="status">
       <p>
-        APK update available (build {update.latestBuild}; you have{' '}
-        {update.installedBuild}). Install, then open the new APK.
+        APK update available ({update.latestLabel}; you have{' '}
+        {update.installedLabel}). Install, then open the new APK.
       </p>
       <div className="apk-update-actions">
         <button
