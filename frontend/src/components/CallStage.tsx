@@ -104,7 +104,7 @@ export function CallStage({
 
   return (
     <div
-      className={`call-stage${isVideo ? ' call-stage--video' : ''}`}
+      className={`call-stage${isVideo ? ' call-stage--video' : ''}${isVideo && phase === 'in_call' ? ' call-stage--video-live' : ''}`}
       role="dialog"
       aria-label={title}
     >
@@ -127,8 +127,12 @@ export function CallStage({
           />
         </>
       )}
-      <div className="call-stage-body">
-        <p className="call-stage-label">{title}</p>
+      <div
+        className={`call-stage-body${isVideo && phase === 'in_call' ? ' call-stage-body--video-dock' : ''}`}
+      >
+        {!(isVideo && phase === 'in_call') && (
+          <p className="call-stage-label">{title}</p>
+        )}
         {(!isVideo || phase !== 'in_call') && (
           <>
             <div className="call-stage-avatar" aria-hidden>
@@ -185,7 +189,8 @@ export function CallStage({
                       {cameraOff ? 'Cam off' : 'Camera'}
                     </button>
                   )}
-                  {speakerAvailable && onToggleSpeaker && (
+                  {/* Speaker only for voice — video always uses loudspeaker. */}
+                  {!isVideo && speakerAvailable && onToggleSpeaker && (
                     <button
                       type="button"
                       className={`call-stage-btn call-stage-btn--speaker${speakerOn ? ' is-on' : ''}`}

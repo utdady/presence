@@ -20,6 +20,11 @@ export interface PresenceNearbyPlugin {
   send(options: { data: string }): Promise<void>
   /** Android: route call audio to loudspeaker (true) or earpiece (false). */
   setSpeakerphone(options: { on: boolean }): Promise<void>
+  /**
+   * Android: launcher badge = count of online friends (0 clears).
+   * Uses a silent status notification so OEM badge counters update.
+   */
+  setAppBadge(options: { count: number }): Promise<void>
   addListener(
     eventName: 'peerFound',
     listenerFunc: (peer: NearbyPeer) => void,

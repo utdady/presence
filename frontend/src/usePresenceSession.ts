@@ -16,12 +16,16 @@ import type {
   ChatMessage,
   MessageReplyTo,
   PlainPayload,
+  PresencePing,
+  ReversePingNotify,
   SnapTimerSec,
   UserPublic,
   WsIncoming,
 } from './types'
 import type { HubCallSignal } from './hooks/usePeerCall'
 import { QUICK_REACTIONS } from './emojiData'
+import { setOnlineFriendBadge } from './onlineBadge'
+import { showLocalNotify } from './localNotify'
 
 const REACTIONS = QUICK_REACTIONS
 
@@ -58,6 +62,23 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     sent: number
     total: number
   } | null>(null)
+  /** Outgoing A→peer (I am A). Key = peer id. */
+  const [outgoingPings, setOutgoingPings] = useState<
+    Record<string, PresencePing>
+  >({})
+  /** Incoming peer→me. Key = pinger id. */
+  const [incomingPings, setIncomingPings] = useState<
+    Record<string, PresencePing>
+  >({})
+  /** Reverse: peer received my ping while I was offline. Key = responder. */
+  const [reverseNotifies, setReverseNotifies] = useState<
+    Record<string, ReversePingNotify>
+  >({})
+  const [pingError, setPingError] = useState<string | null>(null)
+  /** Local dismiss for Receive/Ignore UI this session. */
+  const [ignoredPingFrom, setIgnoredPingFrom] = useState<Record<string, true>>(
+    {},
+  )
 
   const wsRef = useRef<WebSocket | null>(null)
   const privateKeyRef = useRef(privateKey)
@@ -86,6 +107,8 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   activePeerIdRef.current = activePeerId
   avatarsRef.current = avatars
   myIdRef.current = myId
+  const peersRef = useRef(peers)
+  peersRef.current = peers
 
   // Hydrate cached avatars from IndexedDB
   useEffect(() => {
@@ -114,14 +137,20 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     })
   }, [activePeerId])
 
-  // Tab title when something is waiting on Friends
+  // Tab title + app badge: how many friends are online (live session only)
   useEffect(() => {
-    const count = Object.keys(unread).length
-    document.title = count > 0 ? `(${count}) Presence` : 'Presence'
-    return () => {
-      document.title = 'Presence'
+    if (!connected) {
+      void setOnlineFriendBadge(0)
+      return () => {
+        void setOnlineFriendBadge(0)
+      }
     }
-  }, [unread])
+    const onlineCount = Object.values(peers).filter((p) => p.online).length
+    void setOnlineFriendBadge(onlineCount)
+    return () => {
+      void setOnlineFriendBadge(0)
+    }
+  }, [connected, peers])
 
   const sendRaw = useCallback((data: Record<string, unknown>) => {
     const ws = wsRef.current
@@ -284,6 +313,123 @@ export function usePresenceSession(opts: UsePresenceOptions) {
               ),
             }
           })
+          return
+        }
+
+        if (data.type === 'ping_state') {
+          const out: Record<string, PresencePing> = {}
+          const inn: Record<string, PresencePing> = {}
+          const me = myIdRef.current
+          for (const p of data.pings) {
+            const row: PresencePing = {
+              from: p.from,
+              to: p.to,
+              createdAt: p.created_at,
+              expiresAt: p.expires_at,
+            }
+            if (p.from === me) out[p.to] = row
+            if (p.to === me) inn[p.from] = row
+          }
+          setOutgoingPings(out)
+          setIncomingPings(inn)
+          const rev: Record<string, ReversePingNotify> = {}
+          for (const r of data.reverse) {
+            rev[r.from] = {
+              from: r.from,
+              expiresAt: r.reverse_expires_at,
+            }
+          }
+          setReverseNotifies(rev)
+          return
+        }
+
+        if (data.type === 'ping') {
+          const me = myIdRef.current
+          const row: PresencePing = {
+            from: data.from,
+            to: data.to,
+            createdAt: data.created_at,
+            expiresAt: data.expires_at,
+          }
+          if (data.from === me) {
+            setOutgoingPings((prev) => ({ ...prev, [data.to]: row }))
+          }
+          if (data.to === me) {
+            setIncomingPings((prev) => ({ ...prev, [data.from]: row }))
+            setIgnoredPingFrom((prev) => {
+              if (!prev[data.from]) return prev
+              const next = { ...prev }
+              delete next[data.from]
+              return next
+            })
+            const name =
+              peersRef.current[data.from]?.display_name ?? data.from
+            void showLocalNotify(
+              `${name} just pinged you`,
+              'Open Presence to Receive or Ignore',
+            )
+          }
+          return
+        }
+
+        if (data.type === 'ping_cleared') {
+          const me = myIdRef.current
+          if (data.from === me) {
+            setOutgoingPings((prev) => {
+              if (!prev[data.to]) return prev
+              const next = { ...prev }
+              delete next[data.to]
+              return next
+            })
+          }
+          if (data.to === me) {
+            setIncomingPings((prev) => {
+              if (!prev[data.from]) return prev
+              const next = { ...prev }
+              delete next[data.from]
+              return next
+            })
+          }
+          return
+        }
+
+        if (data.type === 'ping_received') {
+          // Someone accepted my ping
+          const until =
+            data.reverse_expires_at ?? Date.now() / 1000 + 10 * 60
+          setReverseNotifies((prev) => ({
+            ...prev,
+            [data.from]: { from: data.from, expiresAt: until },
+          }))
+          setOutgoingPings((prev) => {
+            if (!prev[data.from]) return prev
+            const next = { ...prev }
+            delete next[data.from]
+            return next
+          })
+          void showLocalNotify(
+            'Ping received',
+            `${peersRef.current[data.from]?.display_name ?? data.from} received your ping`,
+          )
+          return
+        }
+
+        if (data.type === 'ping_result') {
+          if (data.result === 'ok') {
+            setPingError(null)
+            return
+          }
+          if (data.result === 'target_online') {
+            setPingError('They are already online')
+          } else if (data.result === 'already_active') {
+            setPingError('You already pinged them — wait until it expires')
+          } else if (data.result === 'forbidden') {
+            setPingError('Cannot ping this user')
+          } else if (data.result === 'not_found' || data.result === 'expired') {
+            setPingError(null)
+          } else {
+            setPingError(data.result)
+          }
           return
         }
 
@@ -979,6 +1125,80 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     [sessionKeys, myId, sendRaw],
   )
 
+  const sendPing = useCallback(
+    (peerId: string) => {
+      setPingError(null)
+      sendRaw({ type: 'ping_send', to: peerId })
+    },
+    [sendRaw],
+  )
+
+  const receivePing = useCallback(
+    (fromId: string) => {
+      sendRaw({ type: 'ping_receive', from: fromId })
+      setIgnoredPingFrom((prev) => ({ ...prev, [fromId]: true }))
+    },
+    [sendRaw],
+  )
+
+  const ignorePing = useCallback(
+    (fromId: string) => {
+      sendRaw({ type: 'ping_ignore', from: fromId })
+      setIgnoredPingFrom((prev) => ({ ...prev, [fromId]: true }))
+    },
+    [sendRaw],
+  )
+
+  const dismissReverseNotify = useCallback((fromId: string) => {
+    setReverseNotifies((prev) => {
+      if (!prev[fromId]) return prev
+      const next = { ...prev }
+      delete next[fromId]
+      return next
+    })
+  }, [])
+
+  // Drop reverse banners / pings when wall clock expires
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      const now = Date.now() / 1000
+      setReverseNotifies((prev) => {
+        let changed = false
+        const next = { ...prev }
+        for (const [k, v] of Object.entries(prev)) {
+          if (v.expiresAt <= now) {
+            delete next[k]
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+      setOutgoingPings((prev) => {
+        let changed = false
+        const next = { ...prev }
+        for (const [k, v] of Object.entries(prev)) {
+          if (v.expiresAt != null && v.expiresAt <= now) {
+            delete next[k]
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+      setIncomingPings((prev) => {
+        let changed = false
+        const next = { ...prev }
+        for (const [k, v] of Object.entries(prev)) {
+          if (v.expiresAt != null && v.expiresAt <= now) {
+            delete next[k]
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 15_000)
+    return () => window.clearInterval(t)
+  }, [])
+
   const peerList = Object.values(peers).sort((a, b) =>
     a.display_name.localeCompare(b.display_name),
   )
@@ -1008,5 +1228,14 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     setSelfAvatar,
     clearSelfAvatar,
     reactions: REACTIONS,
+    outgoingPings,
+    incomingPings,
+    reverseNotifies,
+    ignoredPingFrom,
+    pingError,
+    sendPing,
+    receivePing,
+    ignorePing,
+    dismissReverseNotify,
   }
 }

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 
 from app import invites as invite_store
 from app import lan_rooms
+from app import pings as ping_store
 from app import users as user_store
 from app.auth import create_access_token, require_hub, require_user, user_from_token
 from app.models import (
@@ -259,6 +260,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
     await manager.send_presence_snapshot(user.id, websocket)
     if first_device:
         await manager.notify_presence_change(user.id, online=True)
+        for ev in ping_store.on_user_online(user.id):
+            await manager.send_json(user.id, ev)
+
+    # Always send ping snapshot to this device (multi-device).
+    await manager.send_to(websocket, ping_store.snapshot_message(user.id))
 
     try:
         while True:
@@ -276,11 +282,127 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
             to_id = data.get("to")
             payload = data.get("payload")
             msg_id = data.get("msg_id")
+            from_id = data.get("from")
 
             if msg_type == "pubkey":
                 if not isinstance(payload, str) or not payload:
                     continue
                 await manager.fanout_pubkey(user.id, payload)
+                continue
+
+            # --- Presence pings (hub control plane, not E2E ciphertext) ---
+            if msg_type == "ping_send":
+                if not isinstance(to_id, str):
+                    await manager.send_to(
+                        websocket,
+                        {"type": "error", "payload": "missing_to"},
+                    )
+                    continue
+                if not user_store.allowed_edge(user.id, to_id):
+                    await manager.send_to(
+                        websocket,
+                        {
+                            "type": "ping_result",
+                            "to": to_id,
+                            "result": "forbidden",
+                        },
+                    )
+                    continue
+                result, ping = ping_store.try_send(
+                    from_id=user.id,
+                    to_id=to_id,
+                    is_online=manager.is_online,
+                )
+                await manager.send_to(
+                    websocket,
+                    {
+                        "type": "ping_result",
+                        "to": to_id,
+                        "result": result,
+                        "ping": ping_store.ping_public(ping) if ping else None,
+                    },
+                )
+                if result == "ok" and ping:
+                    body = {
+                        "type": "ping",
+                        **ping_store.ping_public(ping),
+                    }
+                    # Fan-out to both accounts' devices
+                    await manager.send_json(ping.from_id, body)
+                    await manager.send_json(ping.to_id, body)
+                continue
+
+            if msg_type == "ping_receive":
+                # B accepts a ping from A. `from` = pinger (A).
+                if not isinstance(from_id, str):
+                    await manager.send_to(
+                        websocket,
+                        {"type": "error", "payload": "missing_from"},
+                    )
+                    continue
+                if not user_store.allowed_edge(from_id, user.id):
+                    await manager.send_to(
+                        websocket,
+                        {
+                            "type": "ping_result",
+                            "from": from_id,
+                            "result": "forbidden",
+                        },
+                    )
+                    continue
+                pinger_online = manager.is_online(from_id)
+                result, removed, rev = ping_store.try_receive(
+                    from_id=from_id,
+                    to_id=user.id,
+                    pinger_online=pinger_online,
+                )
+                await manager.send_to(
+                    websocket,
+                    {
+                        "type": "ping_result",
+                        "from": from_id,
+                        "result": result,
+                        "action": "receive",
+                    },
+                )
+                if result == "ok" and removed:
+                    cleared = {
+                        "type": "ping_cleared",
+                        "from": removed.from_id,
+                        "to": removed.to_id,
+                        "reason": "received",
+                    }
+                    await manager.send_json(removed.from_id, cleared)
+                    await manager.send_json(removed.to_id, cleared)
+                    if pinger_online:
+                        await manager.send_json(
+                            removed.from_id,
+                            {
+                                "type": "ping_received",
+                                "from": user.id,
+                                "to": removed.from_id,
+                                "reverse_expires_at": None,
+                            },
+                        )
+                    elif rev:
+                        # Stored; delivered when pinger reconnects.
+                        # Also try immediate delivery if any race.
+                        pass
+                continue
+
+            if msg_type == "ping_ignore":
+                if not isinstance(from_id, str):
+                    continue
+                ping_store.try_ignore(from_id=from_id, to_id=user.id)
+                await manager.send_to(
+                    websocket,
+                    {
+                        "type": "ping_result",
+                        "from": from_id,
+                        "result": "ok",
+                        "action": "ignore",
+                    },
+                )
                 continue
 
             if msg_type in (
@@ -333,6 +455,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
     finally:
         if manager.disconnect(user.id, websocket):
             await manager.notify_presence_change(user.id, online=False)
+            # Start offline grace on outgoing pings
+            for ev in ping_store.on_user_fully_offline(user.id):
+                await manager.send_json(ev["from"], ev)
+                await manager.send_json(ev["to"], ev)
             # Notify peers that this user went offline (clear live threads)
             for peer in user_store.visible_peers(user.id):
                 if manager.is_online(peer.id):

@@ -102,6 +102,10 @@ export class PresenceNearbyTauri implements PresenceNearbyPlugin {
     /* Windows desktop has no earpiece route */
   }
 
+  async setAppBadge(): Promise<void> {
+    /* desktop uses window title in onlineBadge.ts */
+  }
+
   async addListener(
     eventName: 'peerFound',
     listenerFunc: (peer: NearbyPeer) => void,

@@ -766,6 +766,91 @@ public class PresenceNearbyPlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Launcher badge for online-friend count. OEMs read badge numbers from
+     * notifications — use a silent, low-importance status entry, not a buzz.
+     */
+    @PluginMethod
+    public void setAppBadge(PluginCall call) {
+        Integer countObj = call.getInt("count", 0);
+        final int count = countObj != null ? Math.max(0, countObj) : 0;
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("No context");
+            return;
+        }
+        mainHandler.post(() -> {
+            try {
+                applyAppBadge(ctx, count);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("Badge failed: " + e.getMessage());
+            }
+        });
+    }
+
+    private static final String BADGE_CHANNEL = "presence_online_badge";
+    private static final int BADGE_NOTIFY_ID = 71001;
+
+    private void applyAppBadge(Context ctx, int count) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(
+                    ctx, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                // Soft-fail until the user grants notifications (launcher badges
+                // are driven by a silent status notification on most OEMs).
+                return;
+            }
+        }
+
+        android.app.NotificationManager nm =
+            (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            android.app.NotificationChannel channel =
+                new android.app.NotificationChannel(
+                    BADGE_CHANNEL,
+                    "Online presence",
+                    android.app.NotificationManager.IMPORTANCE_MIN
+                );
+            channel.setDescription("Shows how many friends are online");
+            channel.setShowBadge(true);
+            channel.enableLights(false);
+            channel.enableVibration(false);
+            channel.setSound(null, null);
+            nm.createNotificationChannel(channel);
+        }
+
+        if (count <= 0) {
+            nm.cancel(BADGE_NOTIFY_ID);
+            return;
+        }
+
+        int icon = ctx.getApplicationInfo().icon;
+        if (icon == 0) {
+            icon = android.R.drawable.ic_dialog_info;
+        }
+        String body =
+            count == 1 ? "1 friend online" : (count + " friends online");
+
+        androidx.core.app.NotificationCompat.Builder builder =
+            new androidx.core.app.NotificationCompat.Builder(ctx, BADGE_CHANNEL)
+                .setSmallIcon(icon)
+                .setContentTitle("Presence")
+                .setContentText(body)
+                .setNumber(count)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MIN)
+                .setCategory(androidx.core.app.NotificationCompat.CATEGORY_STATUS)
+                .setOngoing(false)
+                .setAutoCancel(false)
+                .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_SECRET);
+
+        nm.notify(BADGE_NOTIFY_ID, builder.build());
+    }
+
     private void quietStopAll() {
         discovering.set(false);
         cancelDiscoveryQuiet();

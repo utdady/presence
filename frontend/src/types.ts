@@ -61,6 +61,70 @@ export type WsIncoming =
       type: 'error'
       payload: string
     }
+  | {
+      type: 'ping'
+      from: string
+      to: string
+      created_at: number
+      expires_at: number | null
+      status: 'active'
+    }
+  | {
+      type: 'ping_state'
+      pings: Array<{
+        from: string
+        to: string
+        created_at: number
+        expires_at: number | null
+        status: string
+      }>
+      reverse: Array<{
+        type: string
+        from: string
+        to: string
+        reverse_expires_at: number
+      }>
+    }
+  | {
+      type: 'ping_cleared'
+      from: string
+      to: string
+      reason: 'received' | 'expired' | string
+    }
+  | {
+      type: 'ping_received'
+      from: string
+      to: string
+      reverse_expires_at?: number | null
+    }
+  | {
+      type: 'ping_result'
+      to?: string
+      from?: string
+      result: string
+      action?: string
+      ping?: {
+        from: string
+        to: string
+        created_at: number
+        expires_at: number | null
+        status: string
+      } | null
+    }
+
+/** A directed presence ping A→B. */
+export type PresencePing = {
+  from: string
+  to: string
+  createdAt: number
+  /** Unix seconds; null while pinger still online. */
+  expiresAt: number | null
+}
+
+export type ReversePingNotify = {
+  from: string
+  expiresAt: number
+}
 
 export interface MessageReplyTo {
   msg_id: string

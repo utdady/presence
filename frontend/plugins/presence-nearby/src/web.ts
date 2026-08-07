@@ -33,4 +33,8 @@ export class PresenceNearbyWeb extends WebPlugin implements PresenceNearbyPlugin
   async setSpeakerphone(): Promise<void> {
     /* no-op on web */
   }
+
+  async setAppBadge(): Promise<void> {
+    /* web uses Badging API in onlineBadge.ts */
+  }
 }

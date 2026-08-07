@@ -50,6 +50,14 @@ interface ChatViewProps {
   onTyping: (active: boolean) => void
   onReact: (msgId: string, emoji: string) => void
   onBack?: () => void
+  /** Outgoing: I pinged them. */
+  outgoingPingLabel?: string | null
+  /** Incoming: they pinged me and I haven't ignored. */
+  showIncomingPing?: boolean
+  onReceivePing?: () => void
+  onIgnorePing?: () => void
+  onPingPeer?: () => void
+  canPing?: boolean
 }
 
 function previewForMessage(m: ChatMessage): string {
@@ -81,6 +89,12 @@ export function ChatView({
   onTyping,
   onReact,
   onBack,
+  outgoingPingLabel,
+  showIncomingPing,
+  onReceivePing,
+  onIgnorePing,
+  onPingPeer,
+  canPing,
 }: ChatViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textInputRef = useRef<HTMLInputElement>(null)
@@ -97,6 +111,7 @@ export function ChatView({
   const [micPrime, setMicPrime] = useState(false)
   const [camPrime, setCamPrime] = useState(false)
   const [callMenuOpen, setCallMenuOpen] = useState(false)
+  const [pingConfirm, setPingConfirm] = useState(false)
   const callHoldTimer = useRef<number | undefined>(undefined)
   const callHoldFired = useRef(false)
   const pendingMediaAction = useRef<'record' | 'audio' | 'video' | null>(null)
@@ -426,13 +441,26 @@ export function ChatView({
           <p className="chat-sub">
             {leaving
               ? 'Going offline…'
-              : online
-                ? canEncrypt
-                  ? 'Present'
-                  : 'Establishing session…'
-                : 'Unavailable'}
+              : outgoingPingLabel
+                ? outgoingPingLabel
+                : online
+                  ? canEncrypt
+                    ? 'Present'
+                    : 'Establishing session…'
+                  : 'Unavailable'}
           </p>
         </div>
+        {canPing && onPingPeer && unavailable && (
+          <button
+            type="button"
+            className="ghost-btn call-launch-btn"
+            aria-label="Ping to come online"
+            title="Ping"
+            onClick={() => setPingConfirm(true)}
+          >
+            <PingIcon />
+          </button>
+        )}
         {onStartCall && online && canEncrypt && !unavailable && (
           <div className="call-launch" onClick={(e) => e.stopPropagation()}>
             <button
@@ -509,6 +537,53 @@ export function ChatView({
           </div>
         )}
       </header>
+
+      {showIncomingPing && onReceivePing && onIgnorePing && (
+        <div className="ping-banner" role="status">
+          <p>
+            <strong>{peer.display_name}</strong> pinged you
+          </p>
+          <div className="ping-banner-actions">
+            <button type="button" className="ping-btn ping-btn--receive" onClick={onReceivePing}>
+              Receive
+            </button>
+            <button type="button" className="ping-btn ping-btn--ignore" onClick={onIgnorePing}>
+              Ignore
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pingConfirm && onPingPeer && (
+        <div className="ping-confirm" role="dialog" aria-modal="true">
+          <div className="ping-confirm-card">
+            <p>
+              Ping <strong>{peer.display_name}</strong>? They&apos;ll get one
+              notification. You can&apos;t ping them again until this expires
+              (while you&apos;re online, then 15 min after you go offline).
+            </p>
+            <div className="ping-banner-actions">
+              <button
+                type="button"
+                className="ping-btn ping-btn--receive"
+                onClick={() => {
+                  setPingConfirm(false)
+                  onPingPeer()
+                }}
+              >
+                Send ping
+              </button>
+              <button
+                type="button"
+                className="ping-btn ping-btn--ignore"
+                onClick={() => setPingConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="chat-body">
         {unavailable && messages.length === 0 ? (
@@ -903,6 +978,41 @@ function PhoneIcon() {
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** Radar-style cue for “nudge someone online”. */
+function PingIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <path
+        d="M7.5 7.5a6.4 6.4 0 0 1 9 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 5a10 10 0 0 1 14 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+      <path
+        d="M16.5 16.5a6.4 6.4 0 0 1-9 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M19 19a10 10 0 0 1-14 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        opacity="0.55"
       />
     </svg>
   )

@@ -224,6 +224,87 @@ input:focus {
   background: var(--bg-elevated);
 }
 
+.friend-row--ping .friend-state {
+  color: var(--accent, #5b8def);
+}
+
+.ping-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated, rgba(127, 127, 127, 0.12));
+}
+
+.ping-banner p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.ping-banner--reverse {
+  border-bottom: none;
+  border-radius: 0;
+}
+
+.ping-reverse-list {
+  border-bottom: 1px solid var(--border);
+}
+
+.ping-banner-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.ping-btn {
+  border: none;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ping-btn--receive {
+  background: #34c759;
+  color: #fff;
+}
+
+.ping-btn--ignore {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}
+
+.ping-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1.25rem;
+}
+
+.ping-confirm-card {
+  width: min(100%, 22rem);
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.ping-confirm-card p {
+  margin: 0 0 1rem;
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
 @media (min-width: 860px) {
   .app-frame,
   .app-frame--split {
@@ -1218,6 +1299,42 @@ input:focus {
   );
 }
 
+/* Connected video: pin chrome to bottom so remote video stays visible. */
+.call-stage--video-live {
+  place-items: stretch end;
+  align-content: end;
+}
+
+.call-stage-body--video-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-width: none;
+  width: 100%;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem calc(1.1rem + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 0.35) 55%,
+    transparent 100%
+  );
+}
+
+.call-stage-body--video-dock .call-stage-actions {
+  margin-top: 0.35rem;
+  gap: 0.65rem;
+}
+
+.call-stage--video-live .call-stage-btn {
+  min-width: 4.25rem;
+  height: 4.25rem;
+  font-size: 0.78rem;
+}
+
 .call-stage-remote-video {
   position: absolute;
   inset: 0;
@@ -1247,7 +1364,8 @@ input:focus {
 }
 
 .call-stage-name--overlay {
-  margin-bottom: 0.75rem;
+  margin: 0 0 0.15rem;
+  font-size: 1.15rem;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 

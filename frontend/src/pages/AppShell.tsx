@@ -21,6 +21,7 @@ import { usePeerCall } from '../hooks/usePeerCall'
 import { useBackStack } from '../navigation/useBackStack'
 import { usePresenceSession } from '../usePresenceSession'
 import { formatVersionLabel, APP_PRODUCT } from '../appVersion'
+import { formatPingCountdown } from '../pingFormat'
 
 export function AppShell() {
   const { user, token, publicKey, privateKey, logout } = useAuth()
@@ -75,6 +76,12 @@ function PresenceInner({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [apkUpdate, setApkUpdate] = useState<ApkUpdateInfo | null>(null)
   const [apkBannerVisible, setApkBannerVisible] = useState(false)
+  const [pingTick, setPingTick] = useState(0)
+
+  useEffect(() => {
+    const t = window.setInterval(() => setPingTick((n) => n + 1), 15_000)
+    return () => window.clearInterval(t)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -343,15 +350,45 @@ function PresenceInner({
           onChange={(e) => void onPickAvatar(e.target.files?.[0])}
         />
         {avatarError && <p className="list-avatar-error">{avatarError}</p>}
+        {Object.keys(session.reverseNotifies).length > 0 && (
+          <div className="ping-reverse-list">
+            {Object.values(session.reverseNotifies).map((r) => {
+              const name =
+                session.peersById[r.from]?.display_name ?? r.from
+              return (
+                <div key={r.from} className="ping-banner ping-banner--reverse">
+                  <p>
+                    <strong>{name}</strong> received your ping
+                  </p>
+                  <button
+                    type="button"
+                    className="ping-btn ping-btn--ignore"
+                    onClick={() => session.dismissReverseNotify(r.from)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
         <ul className="friend-list">
           {session.peers.map((peer) => {
             const hasUnread = !!session.unread[peer.id]
             const isActive = activePeerId === peer.id
+            const outPing = session.outgoingPings[peer.id]
+            const inPing =
+              session.incomingPings[peer.id] &&
+              !session.ignoredPingFrom[peer.id]
+            void pingTick
+            const pingLabel = outPing
+              ? formatPingCountdown(outPing.expiresAt)
+              : null
             return (
               <li key={peer.id}>
                 <button
                   type="button"
-                  className={`friend-row${peer.online ? '' : ' friend-row--offline'}${hasUnread ? ' friend-row--unread' : ''}${isActive ? ' friend-row--active' : ''}`}
+                  className={`friend-row${peer.online ? '' : ' friend-row--offline'}${hasUnread ? ' friend-row--unread' : ''}${isActive ? ' friend-row--active' : ''}${outPing || inPing ? ' friend-row--ping' : ''}`}
                   onClick={() => setActivePeerId(peer.id)}
                 >
                   <div className="friend-avatar-wrap">
@@ -365,11 +402,15 @@ function PresenceInner({
                   <div className="friend-meta">
                     <span className="friend-name">{peer.display_name}</span>
                     <span className="friend-state">
-                      {hasUnread
-                        ? 'New message'
-                        : peer.online
-                          ? 'Present'
-                          : 'Unavailable'}
+                      {pingLabel
+                        ? pingLabel
+                        : inPing
+                          ? 'Pinged you'
+                          : hasUnread
+                            ? 'New message'
+                            : peer.online
+                              ? 'Present'
+                              : 'Unavailable'}
                     </span>
                   </div>
                 </button>
@@ -511,6 +552,25 @@ function PresenceInner({
             onReact={(msgId, emoji) =>
               session.sendReaction(activePeer.id, msgId, emoji)
             }
+            outgoingPingLabel={
+              session.outgoingPings[activePeer.id]
+                ? formatPingCountdown(
+                    session.outgoingPings[activePeer.id].expiresAt,
+                  )
+                : null
+            }
+            showIncomingPing={
+              !!session.incomingPings[activePeer.id] &&
+              !session.ignoredPingFrom[activePeer.id]
+            }
+            onReceivePing={() => session.receivePing(activePeer.id)}
+            onIgnorePing={() => session.ignorePing(activePeer.id)}
+            canPing={
+              !activePeer.online &&
+              !session.outgoingPings[activePeer.id] &&
+              session.connected
+            }
+            onPingPeer={() => session.sendPing(activePeer.id)}
           />
         ) : (
           <div className="chat-pane-empty">
