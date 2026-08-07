@@ -20,7 +20,10 @@ import { keyFingerprint } from '../crypto'
 import { usePeerCall } from '../hooks/usePeerCall'
 import { useBackStack } from '../navigation/useBackStack'
 import { usePresenceSession } from '../usePresenceSession'
-import { formatVersionLabel, APP_PRODUCT } from '../appVersion'
+import {
+  formatProductVersion,
+  resolveInstalledVersionCode,
+} from '../appVersion'
 import { formatPingCountdown } from '../pingFormat'
 
 export function AppShell() {
@@ -77,6 +80,17 @@ function PresenceInner({
   const [apkUpdate, setApkUpdate] = useState<ApkUpdateInfo | null>(null)
   const [apkBannerVisible, setApkBannerVisible] = useState(false)
   const [pingTick, setPingTick] = useState(0)
+  const [versionLine, setVersionLine] = useState(() => formatProductVersion())
+
+  useEffect(() => {
+    let cancelled = false
+    void resolveInstalledVersionCode().then((code) => {
+      if (!cancelled) setVersionLine(formatProductVersion(code))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const t = window.setInterval(() => setPingTick((n) => n + 1), 15_000)
@@ -264,7 +278,9 @@ function PresenceInner({
               <Avatar user={user} size={36} imageB64={selfImage} />
             </button>
             <div className="list-header-identity">
-              <BrandMark size={22} />
+              <p className="list-header-name" title={user.username}>
+                {user.display_name || user.username}
+              </p>
               <p className="list-status">
                 <span
                   className={`status-dot${session.connected ? ' status-dot--live' : ''}`}
@@ -496,7 +512,7 @@ function PresenceInner({
                 Sign out
               </button>
               <p className="sidebar-settings-version" aria-label="App version">
-                {APP_PRODUCT} · {formatVersionLabel()}
+                {versionLine}
               </p>
             </div>
           )}

@@ -3,7 +3,7 @@ import { useAuth } from '../auth'
 import { setRememberedCreds } from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
-import { formatVersionLabel, APP_PRODUCT } from '../appVersion'
+import { formatProductVersion } from '../appVersion'
 
 export function SignupPage({
   initialInvite = '',
@@ -52,7 +52,7 @@ export function SignupPage({
       <div className="login-panel">
         <BrandMark size={36} />
         <p className="login-version" aria-label="App version">
-          {APP_PRODUCT} · {formatVersionLabel()}
+          {formatProductVersion()}
         </p>
         <h1>Join with invite</h1>
         <p className="login-sub">

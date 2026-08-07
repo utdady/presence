@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import {
   markPrimeSeen,
   shouldShowPrime,
@@ -18,6 +18,7 @@ import {
   ComposerMediaButton,
   ComposerMediaTray,
   useComposerMediaTray,
+  useMobileComposerLayout,
 } from './ComposerMediaTray'
 import { EmojiPicker } from './EmojiPicker'
 import { PermissionPrime } from './PermissionPrime'
@@ -97,12 +98,15 @@ export function ChatView({
   canPing,
 }: ChatViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const textInputRef = useRef<HTMLInputElement>(null)
+  const textInputRef = useRef<HTMLTextAreaElement>(null)
   const [text, setText] = useState('')
+  const [composerActive, setComposerActive] = useState(false)
+  const [composerMultiline, setComposerMultiline] = useState(false)
   const [menuMsgId, setMenuMsgId] = useState<string | null>(null)
   const [reactMore, setReactMore] = useState(false)
   const [replyTo, setReplyTo] = useState<MessageReplyTo | null>(null)
-  const mediaTray = useComposerMediaTray('emoji')
+  const mobileLayout = useMobileComposerLayout()
+  const mediaTray = useComposerMediaTray(mobileLayout ? 'stickers' : 'emoji')
   const [capturing, setCapturing] = useState(false)
   const [viewingSnapId, setViewingSnapId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
@@ -285,6 +289,19 @@ export function ChatView({
     }
   }
 
+  const hasText = text.trim().length > 0
+  const showTools = !hasText
+  // On narrow: free field width by tucking camera while typing.
+  const showCam = showTools && !(mobileLayout && composerActive)
+
+  useEffect(() => {
+    if (mobileLayout) mediaTray.setTab('stickers')
+  }, [mobileLayout])
+
+  useEffect(() => {
+    if (hasText) mediaTray.close()
+  }, [hasText])
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const trimmed = text.trim()
@@ -313,6 +330,13 @@ export function ChatView({
   function insertEmoji(glyph: string) {
     setText((t) => t + glyph)
     textInputRef.current?.focus()
+  }
+
+  function onComposerKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      e.currentTarget.form?.requestSubmit()
+    }
   }
 
   async function beginVoiceCall() {
@@ -347,6 +371,37 @@ export function ChatView({
     if (typingTimer.current) window.clearTimeout(typingTimer.current)
     typingTimer.current = window.setTimeout(() => onTyping(false), 1200)
   }
+
+  function resizeComposerField() {
+    const el = textInputRef.current
+    if (!el) return
+
+    // Empty → shared single-line height with Settings.
+    if (!el.value) {
+      setComposerMultiline(false)
+      el.style.height = ''
+      return
+    }
+
+    const rootFs =
+      parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    const maxPx = Math.round(8.5 * rootFs)
+
+    setComposerMultiline(false)
+    el.style.height = ''
+    const needsMulti = el.scrollHeight > el.clientHeight + 1 || el.value.includes('\n')
+    setComposerMultiline(needsMulti)
+    if (needsMulti) {
+      el.style.height = '0px'
+      el.style.height = `${Math.min(el.scrollHeight, maxPx)}px`
+    } else {
+      el.style.height = ''
+    }
+  }
+
+  useEffect(() => {
+    resizeComposerField()
+  }, [text])
 
   function openSnap(m: ChatMessage) {
     if (m.kind !== 'snap' || m.opened || !m.image_b64) return
@@ -786,7 +841,7 @@ export function ChatView({
       )}
 
       <ComposerMediaTray
-        open={mediaTray.open}
+        open={mediaTray.open && showTools}
         tab={mediaTray.tab}
         onTabChange={mediaTray.setTab}
         onClose={mediaTray.close}
@@ -794,6 +849,7 @@ export function ChatView({
         onSendSticker={onSendSticker}
         stickersEnabled={!!onSendSticker}
         stickersDisabled={unavailable || !canEncrypt}
+        hideEmoji={mobileLayout}
       />
 
       {recording ? (
@@ -808,71 +864,96 @@ export function ChatView({
           </button>
         </div>
       ) : (
-        <form className="composer" onSubmit={handleSubmit}>
-          <button
-            type="button"
-            className="composer-cam"
-            aria-label="Take a snap"
-            disabled={unavailable || !canEncrypt}
-            onClick={() => setCapturing(true)}
-          >
-            <CamIcon />
-          </button>
-          <button
-            type="button"
-            className="composer-cam"
-            aria-label="Record voice message"
-            disabled={unavailable || !canEncrypt}
-            onClick={() => void startRecording()}
-          >
-            <MicIcon />
-          </button>
+        <form
+          className={`composer${hasText ? ' composer--typing' : ''}${composerActive ? ' is-active' : ''}${composerMultiline ? ' composer--multiline' : ''}`}
+          onSubmit={handleSubmit}
+          onFocusCapture={() => setComposerActive(true)}
+          onBlurCapture={(e) => {
+            const next = e.relatedTarget as Node | null
+            if (!e.currentTarget.contains(next)) setComposerActive(false)
+          }}
+        >
           {onSendFile && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  e.target.value = ''
-                  if (f) onSendFile(f)
-                }}
-              />
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (f) onSendFile(f)
+              }}
+            />
+          )}
+          <div className="composer-field">
+            {showCam && (
               <button
                 type="button"
-                className="composer-cam"
-                aria-label="Attach file"
+                className="composer-tool"
+                aria-label="Take a snap"
                 disabled={unavailable || !canEncrypt}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setCapturing(true)}
               >
-                ＋
+                <CamIcon />
               </button>
-            </>
-          )}
-          <input
-            ref={textInputRef}
-            type="text"
-            value={text}
-            onChange={(e) => handleChange(e.target.value)}
-            placeholder={
-              unavailable
-                ? 'Waiting for presence…'
-                : canEncrypt
-                  ? 'Message'
-                  : 'Connecting…'
-            }
-            disabled={unavailable || !canEncrypt}
-            autoComplete="off"
-          />
-          <ComposerMediaButton
-            open={mediaTray.open}
-            disabled={unavailable || !canEncrypt}
-            onClick={mediaTray.toggle}
-          />
-          <button type="submit" disabled={unavailable || !canEncrypt || !text.trim()}>
-            Send
-          </button>
+            )}
+            <textarea
+              ref={textInputRef}
+              rows={1}
+              value={text}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={onComposerKeyDown}
+              placeholder={
+                unavailable
+                  ? 'Waiting for presence…'
+                  : canEncrypt
+                    ? 'Message'
+                    : 'Connecting…'
+              }
+              disabled={unavailable || !canEncrypt}
+              autoComplete="off"
+              enterKeyHint="send"
+            />
+            {showTools && (
+              <div className="composer-tools">
+                <button
+                  type="button"
+                  className="composer-tool"
+                  aria-label="Record voice message"
+                  disabled={unavailable || !canEncrypt}
+                  onClick={() => void startRecording()}
+                >
+                  <MicIcon />
+                </button>
+                {onSendFile && (
+                  <button
+                    type="button"
+                    className="composer-tool"
+                    aria-label="Attach file"
+                    disabled={unavailable || !canEncrypt}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <AttachIcon />
+                  </button>
+                )}
+                <ComposerMediaButton
+                  open={mediaTray.open}
+                  disabled={unavailable || !canEncrypt}
+                  onClick={mediaTray.toggle}
+                  stickersOnly={mobileLayout}
+                />
+              </div>
+            )}
+            {hasText && (
+              <button
+                type="submit"
+                className="composer-send"
+                disabled={unavailable || !canEncrypt}
+              >
+                Send
+              </button>
+            )}
+          </div>
         </form>
       )}
       {recError && <p className="composer-error">{recError}</p>}
@@ -1038,6 +1119,19 @@ function MicIcon() {
       />
       <path
         d="M12 17v3"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function AttachIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 5v14M5 12h14"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"

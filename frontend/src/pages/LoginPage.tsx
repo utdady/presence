@@ -5,7 +5,7 @@ import {
   getRememberedCreds,
   setRememberedCreds,
 } from '../credentials'
-import { formatVersionLabel, APP_PRODUCT } from '../appVersion'
+import { formatProductVersion } from '../appVersion'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 
@@ -101,7 +101,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
       <div className="login-panel">
         <BrandMark size={36} />
         <p className="login-version" aria-label="App version">
-          {APP_PRODUCT} · {formatVersionLabel()}
+          {formatProductVersion()}
         </p>
         <h1>Sign in</h1>
         <p className="login-sub">
