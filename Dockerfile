@@ -15,10 +15,11 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    APP_ENV=prod \
     STATIC_DIR=/app/frontend/dist \
     USERS_FILE=/data/users.json \
     INVITES_FILE=/data/invites.json \
-    CORS_ORIGINS=*
+    CORS_ORIGINS="https://presence-addy.fly.dev,http://tauri.localhost,https://tauri.localhost,tauri://localhost"
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -31,4 +32,4 @@ COPY --from=frontend /src/frontend/dist ./frontend/dist
 EXPOSE 8000
 
 # JWT_SECRET and USERS_JSON must be set at deploy time (fly secrets set)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]

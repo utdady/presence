@@ -6,6 +6,7 @@ import {
   wasUpdateDismissed,
   type ApkUpdateInfo,
 } from '../apkUpdate'
+import { fetchIceServers } from '../api'
 import { fileToAvatarJpeg } from '../avatarImage'
 import { ApkUpdateBanner } from '../components/ApkUpdateBanner'
 import { Avatar } from '../components/Avatar'
@@ -122,6 +123,7 @@ function PresenceInner({
     myFingerprint: keyFingerprint(publicKey),
     sendSignal: session.sendCallSignal,
     onRemoteSignal: session.onCallSignal,
+    getIceServers: () => fetchIceServers(token),
   })
 
   useEffect(() => {
@@ -528,7 +530,12 @@ function PresenceInner({
             messages={session.messages[activePeer.id] ?? []}
             typing={!!session.typing[activePeer.id]}
             leaving={session.leavingPeer === activePeer.id}
-            canEncrypt={!!session.sessionKeys[activePeer.id]}
+            canEncrypt={
+              !!session.sessionKeys[activePeer.id] &&
+              !session.keyMismatches[activePeer.id]
+            }
+            keyMismatch={!!session.keyMismatches[activePeer.id]}
+            onConfirmKeyChange={() => session.confirmKeyChange(activePeer.id)}
             reactions={session.reactions}
             onBack={() => setActivePeerId(null)}
             onSend={(text, replyTo) =>
@@ -609,6 +616,7 @@ function PresenceInner({
         speakerOn={peerCall.speakerOn}
         speakerAvailable={peerCall.speakerAvailable}
         offerReady={peerCall.offerReady}
+        poorConnection={peerCall.poorConnection}
         error={peerCall.error}
         onAccept={() => void peerCall.acceptCall()}
         onReject={peerCall.rejectCall}

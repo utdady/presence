@@ -1,23 +1,26 @@
 const CREDS_KEY = 'presence_remembered_creds'
 
+// Username only — passwords are never persisted on-device. The JWT keeps the
+// session alive; leaking the password would also leak the E2E identity key.
 export interface RememberedCreds {
   username: string
-  password: string
 }
 
 export function getRememberedCreds(): RememberedCreds | null {
   try {
     const raw = localStorage.getItem(CREDS_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<RememberedCreds>
-    if (
-      typeof parsed.username !== 'string' ||
-      typeof parsed.password !== 'string' ||
-      !parsed.username
-    ) {
+    const parsed = JSON.parse(raw) as Partial<RememberedCreds> & {
+      password?: unknown
+    }
+    if (typeof parsed.username !== 'string' || !parsed.username) {
       return null
     }
-    return { username: parsed.username, password: parsed.password }
+    // Migration: rewrite legacy entries that still carry a plaintext password.
+    if ('password' in parsed) {
+      setRememberedCreds({ username: parsed.username })
+    }
+    return { username: parsed.username }
   } catch {
     return null
   }
@@ -26,10 +29,7 @@ export function getRememberedCreds(): RememberedCreds | null {
 export function setRememberedCreds(creds: RememberedCreds): void {
   localStorage.setItem(
     CREDS_KEY,
-    JSON.stringify({
-      username: creds.username.trim(),
-      password: creds.password,
-    }),
+    JSON.stringify({ username: creds.username.trim() }),
   )
 }
 

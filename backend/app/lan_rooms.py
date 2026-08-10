@@ -1,3 +1,12 @@
+"""Short-lived internet rooms for in-person Nearby fallback.
+
+Intentional product exception: any two authenticated users may share a room —
+this path does NOT enforce hub↔spoke `allowed_edge()`. Physically-present /
+code-shared trust is treated as distinct from the invite-gated hub roster.
+Bluetooth Nearby remains the fully offline path; this module always needs the
+server for the room code + signaling WebSocket.
+"""
+
 from __future__ import annotations
 
 import secrets

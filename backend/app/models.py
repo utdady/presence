@@ -9,14 +9,16 @@ Role = Literal["hub", "spoke"]
 
 
 class UserRecord(BaseModel):
+    # Ignore unknown fields so legacy rosters with a stored `password_plain`
+    # load cleanly; the field is dropped on the next save (migration wipe).
+    model_config = {"extra": "ignore"}
+
     id: str
     username: str
     display_name: str
     password_hash: str
     role: Role
     avatar_color: str
-    # Hub-only plaintext for invite tracking. Never returned on public user APIs.
-    password_plain: str | None = None
 
 
 class UserPublic(BaseModel):
@@ -29,7 +31,7 @@ class UserPublic(BaseModel):
 
 
 class MemberPrivate(BaseModel):
-    """Hub-only roster row including recoverable plaintext password when known."""
+    """Hub-only roster row. Never includes passwords (only hashes exist server-side)."""
 
     id: str
     username: str
@@ -37,7 +39,6 @@ class MemberPrivate(BaseModel):
     role: Role
     avatar_color: str
     online: bool = False
-    password: str | None = None
 
 
 class LoginRequest(BaseModel):

@@ -3,8 +3,15 @@ import {
   deriveSessionKey,
   encryptJson,
   decryptJson,
+  handshakeConfirmDigest,
   keyFingerprint,
+  randomHandshakeNonce,
 } from '../crypto'
+import {
+  confirmPeerKey,
+  nearbyPinStatus,
+  type NearbyPinStatus,
+} from '../pinnedKeys'
 import { getToken, apiUrl, PROD_ORIGIN, isPackedClient } from '../api'
 import type {
   NearbyCallPhase,
@@ -36,12 +43,22 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
   const [roomCode, setRoomCode] = useState<string | null>(null)
   const [remoteName, setRemoteName] = useState<string | null>(null)
   const [remoteFingerprint, setRemoteFingerprint] = useState<string | null>(null)
+  const [pinStatus, setPinStatus] = useState<NearbyPinStatus | null>(null)
   const [muted, setMuted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('')
   const [messages, setMessages] = useState<NearbyChatMessage[]>([])
 
   const sessionKeyRef = useRef<Uint8Array | null>(null)
+  const localNonceRef = useRef<string | null>(null)
+  const remoteNonceRef = useRef<string | null>(null)
+  const confirmOkRef = useRef(false)
+  const confirmSentRef = useRef(false)
+  const pendingPeerRef = useRef<{
+    userId: string
+    displayName: string
+    publicKey: string
+  } | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -52,7 +69,8 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
   const optsRef = useRef(opts)
   optsRef.current = opts
   const mediaGenRef = useRef(0)
-  // hello exchanged each peer-ready
+  const phaseRef = useRef<NearbyCallPhase>('idle')
+  phaseRef.current = phase
 
   const cleanupMedia = useCallback(() => {
     mediaGenRef.current += 1
@@ -81,6 +99,57 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     },
     [sendRaw],
   )
+
+  const resetHandshake = useCallback(() => {
+    localNonceRef.current = null
+    remoteNonceRef.current = null
+    confirmOkRef.current = false
+    confirmSentRef.current = false
+    pendingPeerRef.current = null
+    setPinStatus(null)
+  }, [])
+
+  const tryUnlockSession = useCallback(() => {
+    const pending = pendingPeerRef.current
+    const key = sessionKeyRef.current
+    if (!pending || !key) return
+    const local = localNonceRef.current
+    const remote = remoteNonceRef.current
+    if (remote) {
+      if (!local || !confirmOkRef.current) return
+    }
+    const status = nearbyPinStatus(pending.userId, pending.publicKey)
+    setPinStatus(status)
+    setRemoteName(pending.displayName)
+    setRemoteFingerprint(keyFingerprint(pending.publicKey))
+    if (status === 'known') {
+      setPhase('ready')
+      setStatus(`Connected to ${pending.displayName} · known key`)
+      return
+    }
+    setPhase('verify')
+    setStatus(
+      status === 'changed'
+        ? 'Key changed — compare fingerprints, then confirm'
+        : 'Compare fingerprints on both screens, then confirm',
+    )
+  }, [])
+
+  const trySendKeyConfirm = useCallback(() => {
+    const key = sessionKeyRef.current
+    const local = localNonceRef.current
+    const remote = remoteNonceRef.current
+    if (!key || !local || !remote || confirmSentRef.current) return
+    confirmSentRef.current = true
+    try {
+      sendSignal({
+        type: 'key-confirm',
+        digest: handshakeConfirmDigest(local, remote),
+      })
+    } catch {
+      confirmSentRef.current = false
+    }
+  }, [sendSignal])
 
   const ensurePc = useCallback(async () => {
     if (pcRef.current) return pcRef.current
@@ -122,17 +191,44 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
   }, [sendSignal])
 
   const sendHello = useCallback(() => {
+    // Keep a stable nonce for this room peer-session (peer-ready may fire twice).
+    if (!localNonceRef.current) {
+      localNonceRef.current = randomHandshakeNonce()
+    }
     const hello: NearbyHello = {
       type: 'hello',
       userId: optsRef.current.userId,
       displayName: optsRef.current.displayName,
       publicKey: optsRef.current.publicKey,
+      nonce: localNonceRef.current,
     }
     sendRaw(hello)
-  }, [sendRaw])
+    trySendKeyConfirm()
+    tryUnlockSession()
+  }, [sendRaw, trySendKeyConfirm, tryUnlockSession])
 
   const handlePlain = useCallback(
     async (plain: NearbyPlainSignal) => {
+      if (plain.type === 'key-confirm') {
+        const local = localNonceRef.current
+        const remote = remoteNonceRef.current
+        if (!local || !remote) return
+        if (plain.digest !== handshakeConfirmDigest(local, remote)) {
+          setError('Key confirmation failed — leave and try again')
+          return
+        }
+        confirmOkRef.current = true
+        tryUnlockSession()
+        return
+      }
+      if (
+        phaseRef.current === 'connecting' ||
+        phaseRef.current === 'verify' ||
+        phaseRef.current === 'scanning' ||
+        phaseRef.current === 'idle'
+      ) {
+        return
+      }
       if (plain.type === 'chat') {
         setMessages((prev) => {
           if (prev.some((m) => m.id === plain.id)) return prev
@@ -200,7 +296,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         }
       }
     },
-    [cleanupMedia, ensurePc, sendSignal],
+    [cleanupMedia, ensurePc, sendSignal, tryUnlockSession],
   )
 
   const handleRelay = useCallback(
@@ -212,15 +308,23 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
           optsRef.current.privateKey,
           hello.publicKey,
         )
+        pendingPeerRef.current = {
+          userId: hello.userId,
+          displayName: hello.displayName,
+          publicKey: hello.publicKey,
+        }
+        remoteNonceRef.current = hello.nonce ?? null
         setRemoteName(hello.displayName)
         setRemoteFingerprint(keyFingerprint(hello.publicKey))
         politeRef.current = optsRef.current.publicKey > hello.publicKey
-        if (firstKey) {
-          setMessages([])
-          sendHello()
+        if (firstKey) setMessages([])
+        // Reply with our hello if we haven't yet; otherwise just finish confirm.
+        if (!localNonceRef.current) sendHello()
+        else {
+          trySendKeyConfirm()
+          tryUnlockSession()
         }
-        setPhase('ready')
-        setStatus(`Connected to ${hello.displayName}`)
+        setStatus(`Connected to ${hello.displayName} — confirming keys…`)
         return
       }
       if (wire.type === 'enc') {
@@ -230,7 +334,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         if (plain) await handlePlain(plain)
       }
     },
-    [handlePlain, sendHello],
+    [handlePlain, sendHello, trySendKeyConfirm, tryUnlockSession],
   )
 
   const closeWs = useCallback(() => {
@@ -243,8 +347,8 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
       const token = getToken()
       if (!token) throw new Error('Not signed in')
       closeWs()
-      
       sessionKeyRef.current = null
+      resetHandshake()
       const ws = new WebSocket(lanWsUrl(code, token))
       wsRef.current = ws
       ws.onmessage = (ev) => {
@@ -271,7 +375,10 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         if (msg.type === 'peer-left') {
           cleanupMedia()
           sessionKeyRef.current = null
+          resetHandshake()
           setMessages([])
+          setRemoteName(null)
+          setRemoteFingerprint(null)
           setPhase('scanning')
           setStatus('Peer left — waiting…')
           return
@@ -292,7 +399,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
         }
       }
     },
-    [cleanupMedia, closeWs, handleRelay, sendHello],
+    [cleanupMedia, closeWs, handleRelay, resetHandshake, sendHello],
   )
 
   const createRoom = useCallback(async () => {
@@ -371,6 +478,7 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     cleanupMedia()
     closeWs()
     sessionKeyRef.current = null
+    resetHandshake()
     setMessages([])
     setRoomCode(null)
     setRemoteName(null)
@@ -378,7 +486,20 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     setPhase('idle')
     setStatus('')
     setMuted(false)
-  }, [cleanupMedia, closeWs])
+  }, [cleanupMedia, closeWs, resetHandshake])
+
+  const confirmPeer = useCallback(() => {
+    const pending = pendingPeerRef.current
+    if (!pending || phaseRef.current !== 'verify') return
+    confirmPeerKey(pending.userId, pending.publicKey)
+    setPinStatus('known')
+    setPhase('ready')
+    setStatus(`Connected to ${pending.displayName} · verified`)
+  }, [])
+
+  const rejectPeer = useCallback(() => {
+    leaveRoom()
+  }, [leaveRoom])
 
   useEffect(() => () => leaveRoom(), [leaveRoom])
 
@@ -485,6 +606,9 @@ export function useLanNearbyCall(opts: UseLanNearbyCallOptions) {
     roomCode,
     remoteName,
     remoteFingerprint,
+    pinStatus,
+    confirmPeer,
+    rejectPeer,
     muted,
     error,
     status,

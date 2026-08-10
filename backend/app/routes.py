@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from app import invites as invite_store
 from app import lan_rooms
 from app import pings as ping_store
+from app import turn
+from app.ratelimit import lan_join_limiter, login_limiter
 from app import users as user_store
 from app.auth import create_access_token, require_hub, require_user, user_from_token
 from app.models import (
@@ -37,15 +47,23 @@ def _invite_public(inv) -> InvitePublic:
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-def login(body: LoginRequest) -> TokenResponse:
+def login(body: LoginRequest, request: Request) -> TokenResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    retry_after = login_limiter.check(client_ip, body.username)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
     user = user_store.get_user_by_username(body.username)
     if not user or not user_store.verify_password(user, body.password):
+        login_limiter.record_failure(client_ip, body.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
-    user_store.remember_plain_password(user, body.password)
-    user = user_store.get_user(user.id) or user
+    login_limiter.record_success(client_ip, body.username)
     token = create_access_token(user)
     return TokenResponse(
         access_token=token,
@@ -93,7 +111,7 @@ def list_invites(user: UserRecord = Depends(require_hub)) -> list[InvitePublic]:
 
 @router.get("/members", response_model=list[MemberPrivate])
 def list_members(user: UserRecord = Depends(require_hub)) -> list[MemberPrivate]:
-    """Hub-only roster with plaintext passwords when known."""
+    """Hub-only roster. Passwords are never exposed — only Argon2 hashes exist."""
     rows: list[MemberPrivate] = []
     for u in user_store.all_users():
         rows.append(
@@ -104,7 +122,6 @@ def list_members(user: UserRecord = Depends(require_hub)) -> list[MemberPrivate]
                 role=u.role,
                 avatar_color=u.avatar_color,
                 online=manager.is_online(u.id),
-                password=u.password_plain,
             )
         )
     rows.sort(key=lambda m: (0 if m.role == "hub" else 1, m.username.lower()))
@@ -137,6 +154,12 @@ def me(user: UserRecord = Depends(require_user)) -> UserPublic:
     return user_store.to_public(user, online=manager.is_online(user.id))
 
 
+@router.get("/webrtc/ice-servers")
+def webrtc_ice_servers(user: UserRecord = Depends(require_user)) -> dict[str, object]:
+    """STUN + short-lived TURN credentials for call setup (sync def → threadpool)."""
+    return {"iceServers": turn.get_ice_servers()}
+
+
 @router.get("/peers", response_model=list[UserPublic])
 def peers(user: UserRecord = Depends(require_user)) -> list[UserPublic]:
     return [
@@ -151,7 +174,20 @@ def create_lan_room(user: UserRecord = Depends(require_user)) -> dict[str, str]:
 
 
 @router.post("/nearby/lan/rooms/{code}/join")
-def join_lan_room(code: str, user: UserRecord = Depends(require_user)) -> dict[str, str]:
+def join_lan_room(
+    code: str,
+    request: Request,
+    user: UserRecord = Depends(require_user),
+) -> dict[str, str]:
+    # Intentional: nearby rooms skip hub↔spoke ACL (see lan_rooms module doc).
+    client_ip = request.client.host if request.client else "unknown"
+    retry_after = lan_join_limiter.hit(f"ip:{client_ip}", f"user:{user.id}")
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many room join attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
     try:
         room = lan_rooms.join_room(code, user.id)
     except ValueError as exc:

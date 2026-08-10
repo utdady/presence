@@ -34,6 +34,9 @@ interface ChatViewProps {
   typing: boolean
   leaving: boolean
   canEncrypt: boolean
+  /** Peer's identity key differs from the one we pinned — block until confirmed. */
+  keyMismatch?: boolean
+  onConfirmKeyChange?: () => void
   reactions: readonly string[]
   onSend: (text: string, replyTo?: MessageReplyTo) => void
   onSendSnap: (imageB64: string, timerSec: SnapTimerSec) => void
@@ -77,6 +80,8 @@ export function ChatView({
   typing,
   leaving,
   canEncrypt,
+  keyMismatch = false,
+  onConfirmKeyChange,
   reactions,
   onSend,
   onSendSnap,
@@ -496,13 +501,15 @@ export function ChatView({
           <p className="chat-sub">
             {leaving
               ? 'Going offline…'
-              : outgoingPingLabel
-                ? outgoingPingLabel
-                : online
-                  ? canEncrypt
-                    ? 'Present'
-                    : 'Establishing session…'
-                  : 'Unavailable'}
+              : keyMismatch
+                ? 'Identity key changed'
+                : outgoingPingLabel
+                  ? outgoingPingLabel
+                  : online
+                    ? canEncrypt
+                      ? 'Present'
+                      : 'Establishing session…'
+                    : 'Unavailable'}
           </p>
         </div>
         {canPing && onPingPeer && unavailable && (
@@ -592,6 +599,24 @@ export function ChatView({
           </div>
         )}
       </header>
+
+      {keyMismatch && (
+        <div className="key-mismatch-banner" role="alert">
+          <p>
+            <strong>{peer.display_name}</strong>'s encryption key changed. Confirm
+            with them in person before trusting this chat again.
+          </p>
+          {onConfirmKeyChange && (
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={onConfirmKeyChange}
+            >
+              I verified — trust new key
+            </button>
+          )}
+        </div>
+      )}
 
       {showIncomingPing && onReceivePing && onIgnorePing && (
         <div className="ping-banner" role="status">

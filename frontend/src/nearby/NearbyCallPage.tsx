@@ -220,11 +220,37 @@ function NativeNearbyUI({
         </div>
       )}
 
+      {call.phase === 'verify' && (
+        <div className="nearby-panel nearby-verify">
+          <p className="empty-state-lead">
+            {call.pinStatus === 'changed'
+              ? 'Key changed'
+              : 'Verify this device'}
+          </p>
+          <p className="nearby-note">
+            Compare this fingerprint with the one on{' '}
+            {call.remoteName ?? 'their'} screen. Only confirm if they match.
+          </p>
+          <p className="nearby-verify-fp">{call.remoteFingerprint}</p>
+          <button type="button" onClick={call.confirmPeer}>
+            Confirm — same key on both screens
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={call.rejectPeer}
+          >
+            Disconnect
+          </button>
+        </div>
+      )}
+
       {CHAT_PHASES.has(call.phase) && (
         <NearbyChatPanel
           messages={call.messages}
           peerName={call.remoteName}
           fingerprint={call.remoteFingerprint}
+          verified={call.pinStatus === 'known'}
           recordingNote={call.recordingNote}
           fileTransfer={call.fileTransfer}
           onSend={(text, replyTo) => void call.sendChat(text, replyTo)}
@@ -360,10 +386,11 @@ function LanNearbyUI({
       {call.phase === 'idle' && (
         <div className="nearby-actions">
           <div className="nearby-cta">
-            <p className="empty-state-lead">Bluetooth Nearby</p>
+            <p className="empty-state-lead">Nearby</p>
             <p className="nearby-note">
-              Offline Bluetooth chat needs the Android APK or Windows desktop
-              app. This browser can only use an internet room as a fallback.
+              Fully offline chat needs Bluetooth (Android APK or Windows app).
+              This browser can only start an internet room — the server is used
+              for the room code and signaling; call audio stays peer-to-peer.
             </p>
           </div>
 
@@ -373,14 +400,14 @@ function LanNearbyUI({
             onClick={() => setShowOnlineRooms((v) => !v)}
           >
             {showOnlineRooms
-              ? 'Hide internet fallback'
-              : 'Need internet fallback?'}
+              ? 'Hide internet room'
+              : 'Start internet room (needs online)'}
           </button>
 
           {showOnlineRooms && (
             <>
               <p className="nearby-note">
-                Room codes need the Presence server — not offline Bluetooth.
+                Needs internet to create/join. Not the same as offline Bluetooth.
               </p>
               <button type="button" onClick={() => void call.createRoom()}>
                 Create room
@@ -412,9 +439,36 @@ function LanNearbyUI({
               {call.roomCode}
             </p>
           )}
-          <p className="nearby-note">Waiting for the other device…</p>
+          <p className="nearby-note">
+            Waiting for the other device… (internet needed to start this room)
+          </p>
           <button type="button" className="ghost-btn" onClick={call.leaveRoom}>
             Cancel
+          </button>
+        </div>
+      )}
+
+      {call.phase === 'verify' && (
+        <div className="nearby-panel nearby-verify">
+          <p className="empty-state-lead">
+            {call.pinStatus === 'changed'
+              ? 'Key changed'
+              : 'Verify this device'}
+          </p>
+          <p className="nearby-note">
+            Compare this fingerprint with the one on{' '}
+            {call.remoteName ?? 'their'} screen. Only confirm if they match.
+          </p>
+          <p className="nearby-verify-fp">{call.remoteFingerprint}</p>
+          <button type="button" onClick={call.confirmPeer}>
+            Confirm — same key on both screens
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={call.rejectPeer}
+          >
+            Leave room
           </button>
         </div>
       )}
@@ -424,6 +478,7 @@ function LanNearbyUI({
           messages={call.messages}
           peerName={call.remoteName}
           fingerprint={call.remoteFingerprint}
+          verified={call.pinStatus === 'known'}
           onSend={call.sendChat}
           onLeave={call.leaveRoom}
         />
@@ -436,7 +491,7 @@ function LanNearbyUI({
         subtitle={
           call.remoteFingerprint
             ? `Key ${call.remoteFingerprint}`
-            : 'Online room'
+            : 'Internet room'
         }
         muted={call.muted}
         onAccept={() => void withMicPrime(() => void call.acceptCall())}
@@ -454,6 +509,7 @@ function NearbyChatPanel({
   messages,
   peerName,
   fingerprint,
+  verified,
   recordingNote,
   fileTransfer,
   onSend,
@@ -469,6 +525,7 @@ function NearbyChatPanel({
   messages: NearbyChatMessage[]
   peerName: string | null
   fingerprint?: string | null
+  verified?: boolean
   recordingNote?: boolean
   fileTransfer?: { name: string; sent: number; total: number } | null
   onSend: (text: string, replyTo?: NearbyReply) => void
@@ -522,7 +579,10 @@ function NearbyChatPanel({
             {peerName ? peerName : 'Chat'}
           </p>
           {fingerprint && (
-            <p className="nearby-fingerprint">Key {fingerprint}</p>
+            <p className="nearby-fingerprint">
+              Key {fingerprint}
+              {verified ? ' · known' : ''}
+            </p>
           )}
         </div>
         {onLeave && (

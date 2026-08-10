@@ -26,13 +26,37 @@ interface UsePeerCallOptions {
   onRemoteSignal: (
     handler: (from: string, signal: HubCallSignal) => void,
   ) => () => void
+  /** STUN + short-lived TURN credentials from the backend. Optional — falls back to STUN-only. */
+  getIceServers?: () => Promise<RTCIceServer[]>
 }
 
-const ICE_SERVERS: RTCIceServer[] = [
+/** Used when the backend TURN endpoint is unavailable or not configured. */
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
 ]
+
+/** Cap video bitrate so quality degrades smoothly instead of spiking on weak links. */
+const MAX_VIDEO_BITRATE = 2_000_000
+
+async function tuneVideoSenders(pc: RTCPeerConnection): Promise<void> {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'video') continue
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}]
+      }
+      params.encodings[0].maxBitrate = MAX_VIDEO_BITRATE
+      ;(
+        params as RTCRtpSendParameters & { degradationPreference?: string }
+      ).degradationPreference = 'maintain-framerate'
+      await sender.setParameters(params)
+    } catch {
+      /* pre-negotiation or unsupported — harmless */
+    }
+  }
+}
 
 function isSessionDesc(
   s: RTCSessionDescriptionInit | RTCIceCandidateInit,
@@ -70,6 +94,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   const [error, setError] = useState<string | null>(null)
   const [remoteName, setRemoteName] = useState('')
   const [offerReady, setOfferReady] = useState(false)
+  const [poorConnection, setPoorConnection] = useState(false)
   const speakerAvailable = canToggleSpeaker()
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -89,6 +114,12 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
   const offerWaitersRef = useRef<Array<() => void>>([])
   const makingOfferRef = useRef(false)
+  // Perfect-negotiation roles for mid-call renegotiation: callee is polite.
+  const politeRef = useRef(false)
+  const iceRestartsRef = useRef(0)
+  const disconnectTimerRef = useRef<number | null>(null)
+  const statsTimerRef = useRef<number | null>(null)
+  const statsPrevRef = useRef<{ lost: number; recv: number } | null>(null)
   const optsRef = useRef(opts)
   optsRef.current = opts
   phaseRef.current = phase
@@ -126,9 +157,55 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     if (stream) void el.play().catch(() => {})
   }, [])
 
+  /** ~3s loss/RTT sampling driving the "Poor connection" indicator. */
+  const pollStats = useCallback(async () => {
+    const pc = pcRef.current
+    if (!pc || phaseRef.current !== 'in_call') return
+    try {
+      const stats = await pc.getStats()
+      let lost = 0
+      let recv = 0
+      let rtt: number | null = null
+      stats.forEach((report) => {
+        const r = report as {
+          type: string
+          state?: string
+          packetsLost?: number
+          packetsReceived?: number
+          currentRoundTripTime?: number
+        }
+        if (r.type === 'inbound-rtp') {
+          lost += r.packetsLost ?? 0
+          recv += r.packetsReceived ?? 0
+        }
+        if (
+          r.type === 'candidate-pair' &&
+          r.state === 'succeeded' &&
+          typeof r.currentRoundTripTime === 'number'
+        ) {
+          rtt = Math.max(rtt ?? 0, r.currentRoundTripTime)
+        }
+      })
+      const prev = statsPrevRef.current
+      statsPrevRef.current = { lost, recv }
+      if (!prev) return
+      const dLost = lost - prev.lost
+      const dTotal = dLost + (recv - prev.recv)
+      const lossRatio = dTotal > 0 ? dLost / dTotal : 0
+      setPoorConnection(lossRatio > 0.08 || (rtt !== null && rtt > 0.5))
+    } catch {
+      /* stats unsupported — indicator stays off */
+    }
+  }, [])
+
   const enterInCall = useCallback(() => {
     setPhase('in_call')
     phaseRef.current = 'in_call'
+    const pc = pcRef.current
+    if (pc) void tuneVideoSenders(pc)
+    statsPrevRef.current = null
+    if (statsTimerRef.current) window.clearInterval(statsTimerRef.current)
+    statsTimerRef.current = window.setInterval(() => void pollStats(), 3000)
     // Voice: force earpiece (loudspeaker only after user tap). Video: keep current route.
     if (mediaRef.current === 'audio') {
       speakerRef.current = false
@@ -146,7 +223,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       attachLocalPreview(localStreamRef.current)
       applyOutputRoute()
     }, 120)
-  }, [applyOutputRoute, attachLocalPreview, attachRemoteMedia])
+  }, [applyOutputRoute, attachLocalPreview, attachRemoteMedia, pollStats])
 
   const notifyOfferReady = useCallback(() => {
     setOfferReady(true)
@@ -177,12 +254,26 @@ export function usePeerCall(opts: UsePeerCallOptions) {
   const cleanup = useCallback(() => {
     mediaGenRef.current += 1
     makingOfferRef.current = false
+    politeRef.current = false
+    iceRestartsRef.current = 0
+    if (disconnectTimerRef.current) {
+      window.clearTimeout(disconnectTimerRef.current)
+      disconnectTimerRef.current = null
+    }
+    if (statsTimerRef.current) {
+      window.clearInterval(statsTimerRef.current)
+      statsTimerRef.current = null
+    }
+    statsPrevRef.current = null
+    setPoorConnection(false)
     const pc = pcRef.current
     pcRef.current = null
     if (pc) {
       pc.onicecandidate = null
       pc.ontrack = null
       pc.onconnectionstatechange = null
+      pc.oniceconnectionstatechange = null
+      pc.onnegotiationneeded = null
       pc.close()
     }
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -218,13 +309,36 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     }
   }, [])
 
+  /** Recover from network changes (wifi→cellular etc.) before giving up. */
+  const requestIceRestart = useCallback((pc: RTCPeerConnection) => {
+    if (pc !== pcRef.current) return
+    if (phaseRef.current !== 'in_call') return
+    if (iceRestartsRef.current >= 2) return
+    iceRestartsRef.current += 1
+    // Fires negotiationneeded → a fresh offer goes out over the signal channel.
+    pc.restartIce()
+  }, [])
+
   const ensurePc = useCallback(
     async (wantVideo: boolean) => {
       if (pcRef.current) return pcRef.current
       const peerId = callPeerRef.current
       if (!peerId) throw new Error('No peer')
 
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      const gen = ++mediaGenRef.current
+      let iceServers = FALLBACK_ICE_SERVERS
+      if (optsRef.current.getIceServers) {
+        try {
+          iceServers = await optsRef.current.getIceServers()
+        } catch {
+          /* backend unreachable — STUN-only still allows direct P2P */
+        }
+      }
+      if (gen !== mediaGenRef.current || pcRef.current) {
+        throw new Error('Call cancelled')
+      }
+
+      const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
 
       pc.onicecandidate = (ev) => {
@@ -253,19 +367,84 @@ export function usePeerCall(opts: UsePeerCallOptions) {
 
       pc.onconnectionstatechange = () => {
         if (pc !== pcRef.current) return
+        if (pc.connectionState === 'connected') {
+          iceRestartsRef.current = 0
+          setError(null)
+          void tuneVideoSenders(pc)
+          return
+        }
         if (pc.connectionState === 'failed') {
+          if (phaseRef.current === 'in_call' && iceRestartsRef.current < 2) {
+            requestIceRestart(pc)
+            return
+          }
           setError('Could not connect — check network / try again')
           // Don't auto-teardown immediately; leave UI so user can End.
         }
       }
 
-      const gen = ++mediaGenRef.current
+      pc.oniceconnectionstatechange = () => {
+        if (pc !== pcRef.current) return
+        const st = pc.iceConnectionState
+        if (st === 'connected' || st === 'completed') {
+          if (disconnectTimerRef.current) {
+            window.clearTimeout(disconnectTimerRef.current)
+            disconnectTimerRef.current = null
+          }
+          return
+        }
+        // 'disconnected' often self-heals — restart ICE only if it persists.
+        if (st === 'disconnected' && !disconnectTimerRef.current) {
+          disconnectTimerRef.current = window.setTimeout(() => {
+            disconnectTimerRef.current = null
+            if (pc === pcRef.current && pc.iceConnectionState === 'disconnected') {
+              requestIceRestart(pc)
+            }
+          }, 3000)
+        }
+      }
+
+      // Renegotiation only (ICE restarts). The initial offer stays manual in
+      // startCall/acceptCall, so this must not fire during first setup.
+      pc.onnegotiationneeded = () => {
+        if (pc !== pcRef.current) return
+        if (phaseRef.current !== 'in_call') return
+        void (async () => {
+          try {
+            makingOfferRef.current = true
+            await pc.setLocalDescription()
+            const to = callPeerRef.current
+            if (to && pc.localDescription) {
+              optsRef.current.sendSignal(to, {
+                kind: 'webrtc-signal',
+                signal: toSdpInit(pc.localDescription),
+              })
+            }
+          } catch {
+            /* renegotiation failed — connection monitor will retry/report */
+          } finally {
+            makingOfferRef.current = false
+          }
+        })()
+      }
+
       let stream: MediaStream
       try {
-        // Soft constraints — hard 720p ideals fail on many phones / WebViews.
+        // `ideal` constraints never hard-fail — browsers best-effort match them.
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: wantVideo ? { facingMode: 'user' } : false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: wantVideo
+            ? {
+                facingMode: 'user',
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 },
+              }
+            : false,
         })
       } catch (e) {
         if (wantVideo) {
@@ -300,7 +479,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       for (const track of stream.getTracks()) pc.addTrack(track, stream)
       return pc
     },
-    [attachLocalPreview, attachRemoteMedia],
+    [attachLocalPreview, attachRemoteMedia, requestIceRestart],
   )
 
   useEffect(() => {
@@ -321,6 +500,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
           setMedia(m)
           setRemoteName(from)
           callPeerRef.current = from
+          politeRef.current = true
           setOfferReady(!!pendingOfferRef.current)
           setPhase('incoming')
           phaseRef.current = 'incoming'
@@ -345,10 +525,36 @@ export function usePeerCall(opts: UsePeerCallOptions) {
         if (signal.kind !== 'webrtc-signal') return
         const s = signal.signal
 
-        // --- SDP offer (callee buffers until Accept) ---
         if (isSessionDesc(s) && s.type === 'offer') {
+          // --- Mid-call renegotiation offer (ICE restart / network change).
+          // Perfect-negotiation: impolite (caller) ignores colliding offers;
+          // polite (callee) rolls back via setRemoteDescription.
+          const pc = pcRef.current
+          if (pc && phaseRef.current === 'in_call') {
+            const collision =
+              makingOfferRef.current || pc.signalingState !== 'stable'
+            if (!politeRef.current && collision) return
+            try {
+              await pc.setRemoteDescription(s)
+              await flushPendingIce(pc)
+              await pc.setLocalDescription()
+              const to = callPeerRef.current
+              if (to && pc.localDescription) {
+                optsRef.current.sendSignal(to, {
+                  kind: 'webrtc-signal',
+                  signal: toSdpInit(pc.localDescription),
+                })
+              }
+            } catch {
+              /* stale renegotiation — connection monitor handles recovery */
+            }
+            return
+          }
+
+          // --- Initial SDP offer (callee buffers until Accept) ---
           if (!callPeerRef.current) callPeerRef.current = from
           setRemoteName((n) => n || from)
+          politeRef.current = true
           pendingOfferRef.current = s
           if (phaseRef.current === 'idle') {
             setPhase('incoming')
@@ -383,7 +589,8 @@ export function usePeerCall(opts: UsePeerCallOptions) {
           ) {
             await pc.setRemoteDescription(s)
             await flushPendingIce(pc)
-            enterInCall()
+            // Renegotiation answers must not re-run in-call setup (speaker route etc.).
+            if (phaseRef.current !== 'in_call') enterInCall()
           }
         }
       })()
@@ -404,6 +611,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       mediaRef.current = want
       setMedia(want)
       callPeerRef.current = peerId
+      politeRef.current = false
       setRemoteName(peerId)
       setOfferReady(false)
       setPhase('outgoing')
@@ -566,6 +774,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     speakerOn,
     speakerAvailable,
     offerReady,
+    poorConnection,
     error,
     remoteName,
     startCall,

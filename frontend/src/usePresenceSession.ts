@@ -12,6 +12,7 @@ import {
   encryptPayload,
   newMsgId,
 } from './crypto'
+import { confirmPeerKey, observePeerKey } from './pinnedKeys'
 import type {
   ChatMessage,
   MessageReplyTo,
@@ -79,6 +80,10 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   const [ignoredPingFrom, setIgnoredPingFrom] = useState<Record<string, true>>(
     {},
   )
+  /** Peer presented a different identity key than the one we pinned. */
+  const [keyMismatches, setKeyMismatches] = useState<
+    Record<string, { pinned: string; received: string }>
+  >({})
 
   const wsRef = useRef<WebSocket | null>(null)
   const privateKeyRef = useRef(privateKey)
@@ -252,6 +257,24 @@ export function usePresenceSession(opts: UsePresenceOptions) {
         }
 
         if (data.type === 'pubkey') {
+          const observed = observePeerKey(data.from, data.payload)
+          if (observed.status === 'mismatch') {
+            setKeyMismatches((prev) => ({
+              ...prev,
+              [data.from]: {
+                pinned: observed.pinned,
+                received: observed.received,
+              },
+            }))
+            // Keep using the pinned key until the user explicitly confirms.
+            return
+          }
+          setKeyMismatches((prev) => {
+            if (!prev[data.from]) return prev
+            const copy = { ...prev }
+            delete copy[data.from]
+            return copy
+          })
           setPeerKeys((prev) => ({ ...prev, [data.from]: data.payload }))
           return
         }
@@ -1199,6 +1222,18 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     return () => window.clearInterval(t)
   }, [])
 
+  const confirmKeyChange = useCallback((peerId: string) => {
+    const row = keyMismatches[peerId]
+    if (!row) return
+    confirmPeerKey(peerId, row.received)
+    setPeerKeys((prev) => ({ ...prev, [peerId]: row.received }))
+    setKeyMismatches((prev) => {
+      const copy = { ...prev }
+      delete copy[peerId]
+      return copy
+    })
+  }, [keyMismatches])
+
   const peerList = Object.values(peers).sort((a, b) =>
     a.display_name.localeCompare(b.display_name),
   )
@@ -1208,6 +1243,8 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     peers: peerList,
     peersById: peers,
     sessionKeys,
+    keyMismatches,
+    confirmKeyChange,
     messages,
     typing,
     unread,

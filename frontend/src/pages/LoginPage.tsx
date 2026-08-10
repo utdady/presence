@@ -66,9 +66,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
   const [username, setUsername] = useState(
     () => getRememberedCreds()?.username ?? '',
   )
-  const [password, setPassword] = useState(
-    () => getRememberedCreds()?.password ?? '',
-  )
+  const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(() => !!getRememberedCreds())
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +80,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
       const user = username.trim()
       await login(user, password)
       if (remember) {
-        setRememberedCreds({ username: user, password })
+        setRememberedCreds({ username: user })
       } else {
         clearRememberedCreds()
       }
@@ -145,7 +143,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            <span>Remember on this device</span>
+            <span>Remember username on this device</span>
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={busy}>

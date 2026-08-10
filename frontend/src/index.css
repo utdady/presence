@@ -231,6 +231,39 @@ input:focus {
   color: var(--accent, #5b8def);
 }
 
+.key-mismatch-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(242, 181, 68, 0.14);
+}
+
+.key-mismatch-banner p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.nearby-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 0.85rem;
+  align-items: stretch;
+}
+
+.nearby-verify-fp {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.35rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  word-break: break-all;
+}
+
 .ping-banner {
   display: flex;
   flex-wrap: wrap;
@@ -1433,6 +1466,11 @@ input:focus {
   opacity: 1;
 }
 
+.call-stage-quality {
+  color: #f2b544;
+  opacity: 1;
+}
+
 .call-stage-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2000,24 +2038,6 @@ input:focus {
   flex-direction: column;
   gap: 0.2rem;
   min-width: 0;
-}
-
-.members-password {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85rem;
-}
-
-.members-password code {
-  word-break: break-all;
-}
-
-.members-password-unknown {
-  color: var(--muted, #888);
-  font-style: italic;
 }
 
 .msg-reply-quote {

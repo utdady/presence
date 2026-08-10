@@ -182,6 +182,26 @@ export async function revokeInvite(
   return res.json()
 }
 
+/** STUN + short-lived TURN credentials. Callers fall back to STUN-only on failure. */
+export async function fetchIceServers(token: string): Promise<RTCIceServer[]> {
+  const ctrl = new AbortController()
+  const timer = window.setTimeout(() => ctrl.abort(), 5000)
+  try {
+    const res = await fetch(apiUrl('/webrtc/ice-servers'), {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal: ctrl.signal,
+    })
+    if (!res.ok) throw new Error('Failed to load ICE servers')
+    const body = (await res.json()) as { iceServers?: RTCIceServer[] }
+    if (!Array.isArray(body.iceServers) || body.iceServers.length === 0) {
+      throw new Error('No ICE servers')
+    }
+    return body.iceServers
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 export async function fetchMembers(
   token: string,
 ): Promise<import('./types').MemberPrivate[]> {

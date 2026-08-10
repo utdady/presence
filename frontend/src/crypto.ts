@@ -243,3 +243,31 @@ export function keyFingerprint(publicKeyB64: string): string {
   )
   return sodium.to_hex(digest).toUpperCase()
 }
+
+/** Random nonce for nearby handshake freshness (base64). */
+export function randomHandshakeNonce(): string {
+  assertReady()
+  return b64(sodium.randombytes_buf(16))
+}
+
+/**
+ * Key-confirmation digest over both handshake nonces (order-independent).
+ * Proves both sides derived the same session key for this live exchange.
+ */
+export function handshakeConfirmDigest(
+  localNonce: string,
+  remoteNonce: string,
+): string {
+  assertReady()
+  const [a, b] =
+    localNonce < remoteNonce
+      ? [localNonce, remoteNonce]
+      : [remoteNonce, localNonce]
+  return sodium.to_hex(
+    sodium.crypto_generichash(
+      16,
+      sodium.from_string(`${a}|${b}`),
+      sodium.from_string('presence-nearby-confirm'),
+    ),
+  )
+}

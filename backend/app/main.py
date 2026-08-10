@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,9 @@ from app import users as user_store
 from app.config import settings
 from app.routes import router
 
+# Fail fast: never boot prod with the known dev JWT secret (tokens would be forgeable).
+settings.validate_prod_secrets()
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -21,7 +24,15 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Presence", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Presence",
+    version="0.1.0",
+    lifespan=lifespan,
+    # Don't expose the API schema/explorer in prod.
+    docs_url="/docs" if settings.is_dev else None,
+    redoc_url="/redoc" if settings.is_dev else None,
+    openapi_url="/openapi.json" if settings.is_dev else None,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list if "*" not in settings.cors_origin_list else ["*"],
@@ -30,6 +41,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+
+# 'unsafe-inline' script-src is needed for the theme-bootstrap inline script in
+# index.html; everything else is locked to self + the Google Fonts hosts.
+_CSP = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "img-src 'self' data: blob:",
+        "media-src 'self' blob:",
+        "connect-src 'self' wss: https:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", _CSP)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(self), microphone=(self), geolocation=(), payment=()",
+    )
+    if not settings.is_dev:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+        )
+    return response
 
 
 @app.get("/health")

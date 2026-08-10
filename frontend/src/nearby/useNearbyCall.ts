@@ -4,8 +4,15 @@ import {
   deriveSessionKey,
   encryptJson,
   decryptJson,
+  handshakeConfirmDigest,
   keyFingerprint,
+  randomHandshakeNonce,
 } from '../crypto'
+import {
+  confirmPeerKey,
+  nearbyPinStatus,
+  type NearbyPinStatus,
+} from '../pinnedKeys'
 import {
   applySpeakerRoute,
   canToggleSpeaker,
@@ -56,6 +63,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [connectedPeer, setConnectedPeer] = useState<NearbyPeerInfo | null>(null)
   const [remoteName, setRemoteName] = useState<string | null>(null)
   const [remoteFingerprint, setRemoteFingerprint] = useState<string | null>(null)
+  const [pinStatus, setPinStatus] = useState<NearbyPinStatus | null>(null)
   const [muted, setMuted] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(false)
   const speakerAvailable = canToggleSpeaker()
@@ -66,6 +74,15 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const [recordingNote, setRecordingNote] = useState(false)
 
   const sessionKeyRef = useRef<Uint8Array | null>(null)
+  const localNonceRef = useRef<string | null>(null)
+  const remoteNonceRef = useRef<string | null>(null)
+  const confirmOkRef = useRef(false)
+  const confirmSentRef = useRef(false)
+  const pendingPeerRef = useRef<{
+    userId: string
+    displayName: string
+    publicKey: string
+  } | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -166,6 +183,55 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     },
     [sendRaw],
   )
+
+  const resetHandshake = useCallback(() => {
+    localNonceRef.current = null
+    remoteNonceRef.current = null
+    confirmOkRef.current = false
+    confirmSentRef.current = false
+    pendingPeerRef.current = null
+    setPinStatus(null)
+  }, [])
+
+  const tryUnlockSession = useCallback(() => {
+    const pending = pendingPeerRef.current
+    const key = sessionKeyRef.current
+    if (!pending || !key) return
+    const local = localNonceRef.current
+    const remote = remoteNonceRef.current
+    // Modern peer (sent nonce): wait for AEAD key-confirm. Legacy: skip confirm.
+    if (remote) {
+      if (!local || !confirmOkRef.current) return
+    }
+
+    const status = nearbyPinStatus(pending.userId, pending.publicKey)
+    setPinStatus(status)
+    setRemoteName(pending.displayName)
+    setRemoteFingerprint(keyFingerprint(pending.publicKey))
+    if (status === 'known') {
+      setPhase('ready')
+      setStatus(`Connected to ${pending.displayName} · known key`)
+      return
+    }
+    setPhase('verify')
+    setStatus(
+      status === 'changed'
+        ? 'Key changed — compare fingerprints, then confirm'
+        : 'Compare fingerprints on both screens, then confirm',
+    )
+  }, [])
+
+  const trySendKeyConfirm = useCallback(() => {
+    const key = sessionKeyRef.current
+    const local = localNonceRef.current
+    const remote = remoteNonceRef.current
+    if (!key || !local || !remote || confirmSentRef.current) return
+    confirmSentRef.current = true
+    const digest = handshakeConfirmDigest(local, remote)
+    void sendSignal({ type: 'key-confirm', digest }).catch(() => {
+      confirmSentRef.current = false
+    })
+  }, [sendSignal])
 
   const flushMse = useCallback(() => {
     const sb = sourceBufferRef.current
@@ -311,6 +377,28 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
 
   const handlePlain = useCallback(
     async (plain: NearbyPlainSignal) => {
+      if (plain.type === 'key-confirm') {
+        const local = localNonceRef.current
+        const remote = remoteNonceRef.current
+        if (!local || !remote) return
+        const expected = handshakeConfirmDigest(local, remote)
+        if (plain.digest !== expected) {
+          setError('Key confirmation failed — disconnect and try again')
+          return
+        }
+        confirmOkRef.current = true
+        tryUnlockSession()
+        return
+      }
+      // Chat/calls stay locked until the session is unlocked (ready / in call / …).
+      if (
+        phaseRef.current === 'connecting' ||
+        phaseRef.current === 'verify' ||
+        phaseRef.current === 'scanning' ||
+        phaseRef.current === 'idle'
+      ) {
+        return
+      }
       if (plain.type === 'chat') {
         setMessages((prev) => {
           if (prev.some((m) => m.id === plain.id)) return prev
@@ -494,7 +582,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         }
       }
     },
-    [cleanupMedia, enqueueVoiceChunk, startVoiceCapture],
+    [cleanupMedia, enqueueVoiceChunk, startVoiceCapture, tryUnlockSession],
   )
 
   const handleMessage = useCallback(
@@ -509,11 +597,23 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         const hello = wire as NearbyHello
         const key = deriveSessionKey(optsRef.current.privateKey, hello.publicKey)
         sessionKeyRef.current = key
+        pendingPeerRef.current = {
+          userId: hello.userId,
+          displayName: hello.displayName,
+          publicKey: hello.publicKey,
+        }
+        remoteNonceRef.current = hello.nonce ?? null
         setRemoteName(hello.displayName)
         setRemoteFingerprint(keyFingerprint(hello.publicKey))
         setMessages([])
-        setPhase('ready')
-        setStatus(`Connected to ${hello.displayName}`)
+        setStatus(`Connected to ${hello.displayName} — confirming keys…`)
+        if (hello.nonce && localNonceRef.current) {
+          trySendKeyConfirm()
+          tryUnlockSession()
+        } else if (!hello.nonce) {
+          // Legacy peer: no live confirm — always require the verify gate.
+          tryUnlockSession()
+        }
         return
       }
       if (wire.type === 'enc') {
@@ -524,7 +624,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         await handlePlain(plain)
       }
     },
-    [handlePlain],
+    [handlePlain, trySendKeyConfirm, tryUnlockSession],
   )
 
   useEffect(() => {
@@ -571,15 +671,24 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
           setConnectedPeer({ id: peer.id, name: peer.name })
           setPhase('connecting')
           setStatus('Exchanging keys…')
+          confirmOkRef.current = false
+          confirmSentRef.current = false
+          localNonceRef.current = randomHandshakeNonce()
           const hello: NearbyHello = {
             type: 'hello',
             userId: optsRef.current.userId,
             displayName: optsRef.current.displayName,
             publicKey: optsRef.current.publicKey,
+            nonce: localNonceRef.current,
           }
-          void sendRaw(hello).catch((e) =>
-            reportError(e instanceof Error ? e.message : 'hello failed'),
-          )
+          void sendRaw(hello)
+            .then(() => {
+              trySendKeyConfirm()
+              tryUnlockSession()
+            })
+            .catch((e) =>
+              reportError(e instanceof Error ? e.message : 'hello failed'),
+            )
         }),
       )
       handles.push(
@@ -587,6 +696,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
           if (!alive) return
           cleanupMedia()
           sessionKeyRef.current = null
+          resetHandshake()
           setConnectedPeer(null)
           setRemoteName(null)
           setRemoteFingerprint(null)
@@ -624,7 +734,16 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
       alive = false
       for (const h of handles) void h.remove()
     }
-  }, [available, cleanupMedia, handleMessage, reportError, sendRaw])
+  }, [
+    available,
+    cleanupMedia,
+    handleMessage,
+    reportError,
+    resetHandshake,
+    sendRaw,
+    trySendKeyConfirm,
+    tryUnlockSession,
+  ])
 
   // Unmount: always release mic + BT
   useEffect(() => {
@@ -676,6 +795,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   const stopScanning = useCallback(async () => {
     cleanupMedia()
     sessionKeyRef.current = null
+    resetHandshake()
     try {
       await PresenceNearby.stop()
     } catch {
@@ -687,7 +807,20 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     setPhase('idle')
     setStatus('')
     setError(null)
-  }, [cleanupMedia])
+  }, [cleanupMedia, resetHandshake])
+
+  const confirmPeer = useCallback(() => {
+    const pending = pendingPeerRef.current
+    if (!pending || phaseRef.current !== 'verify') return
+    confirmPeerKey(pending.userId, pending.publicKey)
+    setPinStatus('known')
+    setPhase('ready')
+    setStatus(`Connected to ${pending.displayName} · verified`)
+  }, [])
+
+  const rejectPeer = useCallback(() => {
+    void stopScanning()
+  }, [stopScanning])
 
   const connectTo = useCallback(
     async (peer: NearbyPeerInfo) => {
@@ -1101,6 +1234,9 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     connectedPeer,
     remoteName,
     remoteFingerprint,
+    pinStatus,
+    confirmPeer,
+    rejectPeer,
     muted,
     speakerOn,
     speakerAvailable,

@@ -22,6 +22,8 @@ interface CallStageProps {
   catchingUp?: boolean
   /** False until the encrypted WebRTC offer has arrived (Accept should wait). */
   offerReady?: boolean
+  /** High packet loss / RTT detected — show a subtle in-call warning. */
+  poorConnection?: boolean
   error?: string | null
   onAccept: () => void
   onReject: () => void
@@ -54,6 +56,7 @@ export function CallStage({
   speakerAvailable = false,
   catchingUp,
   offerReady = true,
+  poorConnection = false,
   error,
   onAccept,
   onReject,
@@ -148,6 +151,9 @@ export function CallStage({
         )}
         {subtitle && <p className="call-stage-sub">{subtitle}</p>}
         {error && <p className="call-stage-sub call-stage-error">{error}</p>}
+        {!error && poorConnection && phase === 'in_call' && (
+          <p className="call-stage-sub call-stage-quality">Poor connection</p>
+        )}
 
         <div className="call-stage-actions">
           {phase === 'incoming' && (

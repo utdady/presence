@@ -244,5 +244,4 @@ export interface MemberPrivate {
   role: Role
   avatar_color: string
   online: boolean
-  password: string | null
 }

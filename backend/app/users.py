@@ -60,7 +60,12 @@ def load_users(path: Path | None = None) -> None:
     _users_by_id.clear()
     _users_by_username.clear()
     hub_count = 0
+    legacy_plaintext = False
     for item in raw:
+        # Legacy rosters may carry a stored plaintext password; detect so we can
+        # rewrite the file without it (one-time migration).
+        if isinstance(item, dict) and item.get("password_plain") is not None:
+            legacy_plaintext = True
         user = UserRecord.model_validate(item)
         _users_by_id[user.id] = user
         _users_by_username[user.username.lower()] = user
@@ -69,6 +74,13 @@ def load_users(path: Path | None = None) -> None:
             _hub_id = user.id
     if hub_count != 1:
         raise RuntimeError(f"Expected exactly one hub user, found {hub_count}")
+
+    # Migration wipe: strip any plaintext passwords left in the roster file.
+    if legacy_plaintext:
+        try:
+            save_users()
+        except OSError:
+            pass
 
 
 def save_users() -> None:
@@ -169,7 +181,6 @@ def create_spoke(
         username=uname,
         display_name=display_name.strip() or uname,
         password_hash=hash_password(password),
-        password_plain=password,
         role="spoke",
         avatar_color=secrets.choice(_AVATAR_COLORS),
     )
@@ -177,13 +188,3 @@ def create_spoke(
     _users_by_username[user.username.lower()] = user
     save_users()
     return user
-
-
-def remember_plain_password(user: UserRecord, password: str) -> None:
-    """Persist plaintext after a successful login so the hub roster stays current."""
-    if user.password_plain == password:
-        return
-    updated = user.model_copy(update={"password_plain": password})
-    _users_by_id[updated.id] = updated
-    _users_by_username[updated.username.lower()] = updated
-    save_users()

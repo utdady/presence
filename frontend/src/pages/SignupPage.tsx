@@ -35,7 +35,7 @@ export function SignupPage({
         password,
       })
       if (remember) {
-        setRememberedCreds({ username: user, password })
+        setRememberedCreds({ username: user })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed')
@@ -115,7 +115,7 @@ export function SignupPage({
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            <span>Remember on this device</span>
+            <span>Remember username on this device</span>
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" disabled={busy}>

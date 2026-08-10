@@ -2,6 +2,7 @@ export type NearbyCallPhase =
   | 'idle'
   | 'scanning'
   | 'connecting'
+  | 'verify'
   | 'ready'
   | 'outgoing'
   | 'incoming'
@@ -18,6 +19,8 @@ export interface NearbyHello {
   userId: string
   displayName: string
   publicKey: string
+  /** Handshake freshness nonce (base64). Absent on older clients. */
+  nonce?: string
 }
 
 export type NearbyPlainSignal =
@@ -25,6 +28,8 @@ export type NearbyPlainSignal =
   | { type: 'call-answer' }
   | { type: 'call-reject' }
   | { type: 'call-end' }
+  /** Proves both sides share the live session key (AEAD-encrypted). */
+  | { type: 'key-confirm'; digest: string }
   /** Legacy LAN/WebRTC path only — ignored on Bluetooth native. */
   | { type: 'webrtc-signal'; signal: RTCSessionDescriptionInit | RTCIceCandidateInit }
   | {

@@ -5,6 +5,11 @@
 #   fly secrets set JWT_SECRET="$(openssl rand -hex 32)"
 #   fly deploy
 #
+# Optional (better call connectivity — TURN relay via Metered / Open Relay):
+#   dashboard.metered.ca → TURN Server → Add Credential, then:
+#   fly secrets set TURN_APP_NAME="yourapp" TURN_API_KEY="..."
+#   (TURN_APP_NAME is the subdomain of yourapp.metered.live)
+#
 # Then open https://presence-YOURNAME.fly.dev
 
 app = 'presence-addy'
@@ -13,7 +18,9 @@ primary_region = 'sin'
 [build]
 
 [env]
-  CORS_ORIGINS = '*'
+  APP_ENV = 'prod'
+  # Web is served same-origin; the extra origins are the Tauri desktop webview.
+  CORS_ORIGINS = 'https://presence-addy.fly.dev,http://tauri.localhost,https://tauri.localhost,tauri://localhost'
   STATIC_DIR = '/app/frontend/dist'
   USERS_FILE = '/data/users.json'
   INVITES_FILE = '/data/invites.json'
