@@ -830,6 +830,58 @@ input:focus {
   color: var(--fg);
 }
 
+.mac-install-help {
+  margin-top: 0.15rem;
+}
+
+.mac-install-help-body {
+  padding: 0.35rem 0 0.5rem;
+}
+
+.mac-install-help-lead {
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+.mac-install-help-steps {
+  margin: 0 0 0.65rem;
+  padding-left: 1.15rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+.mac-install-help-steps li {
+  margin-bottom: 0.25rem;
+}
+
+.mac-install-help-code {
+  margin: 0 0 0.5rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg));
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.mac-install-help-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mac-install-help-copy {
+  font-weight: 600;
+  color: var(--fg);
+}
+
 .self-avatar-btn {
   padding: 0;
   border: none;

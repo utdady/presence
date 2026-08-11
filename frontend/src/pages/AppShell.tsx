@@ -6,9 +6,17 @@ import {
   wasUpdateDismissed,
   type ApkUpdateInfo,
 } from '../apkUpdate'
+import {
+  checkDesktopUpdate,
+  openDesktopDownload,
+  wasDesktopUpdateDismissed,
+  type DesktopUpdateInfo,
+} from '../desktopUpdate'
 import { fetchIceServers } from '../api'
 import { fileToAvatarJpeg } from '../avatarImage'
 import { ApkUpdateBanner } from '../components/ApkUpdateBanner'
+import { DesktopUpdateBanner } from '../components/DesktopUpdateBanner'
+import { MacInstallHelp } from '../components/MacInstallHelp'
 import { Avatar } from '../components/Avatar'
 import { BrandMark } from '../components/BrandMark'
 import { ChatView } from '../components/ChatView'
@@ -80,6 +88,10 @@ function PresenceInner({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [apkUpdate, setApkUpdate] = useState<ApkUpdateInfo | null>(null)
   const [apkBannerVisible, setApkBannerVisible] = useState(false)
+  const [desktopUpdate, setDesktopUpdate] = useState<DesktopUpdateInfo | null>(
+    null,
+  )
+  const [desktopBannerVisible, setDesktopBannerVisible] = useState(false)
   const [pingTick, setPingTick] = useState(0)
   const [versionLine, setVersionLine] = useState(() => formatProductVersion())
 
@@ -106,6 +118,17 @@ function PresenceInner({
         setApkUpdate(info)
         if (!wasUpdateDismissed(info.latestBuild)) {
           setApkBannerVisible(true)
+        }
+      })
+      .catch(() => {
+        /* offline / rate limit — ignore */
+      })
+    void checkDesktopUpdate()
+      .then((info) => {
+        if (cancelled || !info) return
+        setDesktopUpdate(info)
+        if (!wasDesktopUpdateDismissed(info.latestBuild)) {
+          setDesktopBannerVisible(true)
         }
       })
       .catch(() => {
@@ -264,6 +287,12 @@ function PresenceInner({
           <ApkUpdateBanner
             update={apkUpdate}
             onDismiss={() => setApkBannerVisible(false)}
+          />
+        )}
+        {desktopBannerVisible && desktopUpdate && (
+          <DesktopUpdateBanner
+            update={desktopUpdate}
+            onDismiss={() => setDesktopBannerVisible(false)}
           />
         )}
         <header className="list-header">
@@ -477,6 +506,16 @@ function PresenceInner({
                   Update APK ({apkUpdate.latestLabel})
                 </button>
               )}
+              {desktopUpdate && (
+                <button
+                  type="button"
+                  className="sidebar-settings-action"
+                  onClick={() => openDesktopDownload(desktopUpdate.downloadUrl)}
+                >
+                  Update desktop ({desktopUpdate.latestLabel})
+                </button>
+              )}
+              <MacInstallHelp />
               {selfImage && (
                 <button
                   type="button"

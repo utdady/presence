@@ -242,13 +242,38 @@ npm run desktop:build
 ```
 
 **Download a Mac build:** GitHub Releases tagged `desktop-macos-*` (CI on `main`
-publishes `Presence-macos-universal.dmg`). First open may need right-click →
-**Open**, or `xattr -cr /Applications/Presence.app`.
+publishes `Presence-macos-universal.dmg`).
+
+#### Mac install (detailed)
+
+1. Download `Presence-macos-universal.dmg` from the release.
+2. Open the DMG and drag **Presence** into **Applications**.
+3. Eject the DMG.
+
+**First launch — Gatekeeper.** Builds are ad-hoc signed (not Apple notarized), so
+double-click may fail with “damaged” / “can't be opened”.
+
+**Option A — Finder:** Control-click (right-click) **Presence** in Applications →
+**Open** → confirm **Open**.
+
+**Option B — Terminal** (copy all lines, paste into Terminal, press Return):
+
+```bash
+xattr -cr /Applications/Presence.app
+open /Applications/Presence.app
+```
+
+If it still fails: System Settings → Privacy & Security → look for a blocked-app
+message → **Open Anyway**. For calls, also allow Camera and Microphone for Presence.
+
+Inside the running app: **Settings → Can't open on Mac? Help** (copy buttons).
+Desktop shells also show an in-app banner when a newer Windows/Mac build is on GitHub.
 
 Bluetooth Nearby (Windows): enable system Bluetooth, then Nearby → **Find nearby**.
 Pair with an Android device also scanning (APK build that includes RFCOMM Nearby).
 
-Native code: `frontend/src-tauri/` (commands + Windows `nearby` RFCOMM module).
+Native code: `frontend/src-tauri/` (commands + Windows `nearby` RFCOMM module;
+`Info.plist` / `Entitlements.plist` for macOS camera & mic).
 
 
 ### Build a sideloadable APK (no Play Store)

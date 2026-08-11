@@ -76,20 +76,41 @@ jobs:
           tag_name: desktop-macos-${{ github.sha }}
           name: Presence Desktop macOS · Beta 0.${{ github.run_number }}
           body: |
-            **Presence · Desktop (macOS)**
-            Universal binary (Apple Silicon + Intel).
+            **Presence · Desktop (macOS)** · Beta 0.${{ github.run_number }}
+            Universal binary (Apple Silicon + Intel). Includes camera/mic permissions for calls.
 
-            Download **Presence-macos-universal.dmg**, open it, drag **Presence** to Applications.
+            ## Install
+            1. Download **Presence-macos-universal.dmg**
+            2. Open the DMG → drag **Presence** into **Applications**
+            3. Eject the DMG
 
-            First launch (ad-hoc signed, not notarized): right-click the app → **Open**, or:
+            ## First launch (Gatekeeper)
+            This build is **ad-hoc signed** (not Apple notarized). A normal double-click may fail.
+
+            ### Option A — Finder
+            1. Open **Applications**
+            2. **Control-click** (right-click) **Presence** → **Open**
+            3. Click **Open** again
+
+            ### Option B — Terminal (copy & paste)
+            Open **Terminal**, paste both lines, press Return:
+
             ```bash
             xattr -cr /Applications/Presence.app
+            open /Applications/Presence.app
             ```
 
-            Online chat and calls work. Bluetooth Nearby RFCOMM is Windows/Android only —
-            on Mac, Nearby falls back to online rooms when needed.
+            If macOS still says the app is damaged, run the `xattr` line again, or check
+            **System Settings → Privacy & Security** for an **Open Anyway** button.
 
-            Web UI still loads from production (`https://presence-addy.fly.dev`).
+            ## Calls
+            Allow **Camera** and **Microphone** for Presence under
+            **System Settings → Privacy & Security**.
+
+            In the app: **Settings → Can't open on Mac? Help** has the same commands with a Copy button.
+
+            Online chat/calls work. Bluetooth Nearby RFCOMM is Windows/Android only.
+            Web API: `https://presence-addy.fly.dev`
           files: releases/Presence-macos-universal.dmg
           make_latest: false
         env:
