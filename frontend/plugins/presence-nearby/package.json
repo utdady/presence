@@ -6,7 +6,7 @@
   "module": "src/index.ts",
   "types": "src/index.ts",
   "type": "module",
-  "files": ["src/", "android/"],
+  "files": ["src/", "android/", "Sources/", "Package.swift"],
   "author": "Presence",
   "license": "UNLICENSED",
   "scripts": {
@@ -29,6 +29,9 @@
   "capacitor": {
     "android": {
       "src": "android"
+    },
+    "ios": {
+      "src": "."
     }
   }
 }

@@ -27,6 +27,7 @@ import {
 } from '../voiceAudio'
 import { STICKER_MAX_B64_CHARS } from '../stickerImage'
 import { nearbyCallsAvailable } from './capability'
+import { NEARBY_NATIVE_TEXT_ONLY } from './flags'
 import {
   friendlyNearbyError,
   type NearbyCallPhase,
@@ -549,6 +550,7 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
         return
       }
       if (plain.type === 'call-offer') {
+        if (NEARBY_NATIVE_TEXT_ONLY) return
         setRemoteName(plain.fromName)
         setRemoteFingerprint(plain.fingerprint)
         setPhase('incoming')
@@ -855,6 +857,10 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   )
 
   const startCall = useCallback(async () => {
+    if (NEARBY_NATIVE_TEXT_ONLY) {
+      setError('Nearby voice calls are not available on BLE yet — text only for now.')
+      return
+    }
     if (!sessionKeyRef.current) {
       setError('Not ready — wait for key exchange')
       return
@@ -996,6 +1002,10 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
 
   const sendStickerMsg = useCallback(
     async (imageB64: string, mime: string) => {
+      if (NEARBY_NATIVE_TEXT_ONLY) {
+        setError('Nearby stickers are not available on BLE yet.')
+        return
+      }
       if (!sessionKeyRef.current) return
       if (imageB64.length > STICKER_MAX_B64_CHARS) {
         setError('Sticker too large')
@@ -1031,6 +1041,10 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
   )
 
   const startVoiceNote = useCallback(async () => {
+    if (NEARBY_NATIVE_TEXT_ONLY) {
+      setError('Nearby voice notes are not available on BLE yet.')
+      return
+    }
     if (!sessionKeyRef.current || recordingNote) return
     const mime = pickRecorderMime()
     if (!mime) {
@@ -1154,6 +1168,10 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
 
   const sendFile = useCallback(
     async (file: File) => {
+      if (NEARBY_NATIVE_TEXT_ONLY) {
+        setError('Nearby file transfer is not available on BLE yet.')
+        return
+      }
       if (!sessionKeyRef.current) return
       if (file.size > FILE_MAX_BYTES) {
         setError('File too large (max ~2.5 MB while both online)')

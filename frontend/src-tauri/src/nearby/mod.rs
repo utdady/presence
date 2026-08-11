@@ -28,14 +28,10 @@ pub const NAME_PREFIX: &str = "Presence/";
 pub const MAX_PAYLOAD: usize = 512 * 1024;
 
 pub fn platform_available() -> bool {
-    #[cfg(windows)]
-    {
-        win::bluetooth_radio_present()
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
+    // Classic RFCOMM removed for BLE cross-platform parity.
+    // WinRT (Windows) + CoreBluetooth (macOS) BLE natives land next;
+    // until then desktop Nearby uses LAN/online fallback via JS capability.
+    false
 }
 
 pub struct NearbyManager {

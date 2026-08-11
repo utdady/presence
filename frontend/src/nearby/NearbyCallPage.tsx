@@ -7,6 +7,7 @@ import type { NearbyCallPhase, NearbyChatMessage } from './types'
 import { nearbyTransport, type NearbyTransport } from './capability'
 import { useLanNearbyCall } from './useLanNearbyCall'
 import { useNearbyCall } from './useNearbyCall'
+import { NEARBY_NATIVE_TEXT_ONLY } from './flags'
 import { PermissionPrime } from '../components/PermissionPrime'
 import { CallStage } from '../components/CallStage'
 import {
@@ -176,7 +177,7 @@ function NativeNearbyUI({
             ? (call.remoteName ?? 'Nearby')
             : 'Nearby'}
         </h1>
-        {call.phase === 'ready' && (
+        {call.phase === 'ready' && !NEARBY_NATIVE_TEXT_ONLY && (
           <button
             type="button"
             className="ghost-btn"
@@ -191,6 +192,11 @@ function NativeNearbyUI({
       </header>
       <audio ref={audioRef} autoPlay playsInline />
       <p className="nearby-status">{call.status || 'Idle'}</p>
+      {NEARBY_NATIVE_TEXT_ONLY && CHAT_PHASES.has(call.phase) && (
+        <p className="nearby-note">
+          BLE Nearby — text only for now. Voice and files come later.
+        </p>
+      )}
       {call.catchingUp && (
         <p className="nearby-note">Catching up on call audio…</p>
       )}
@@ -199,9 +205,10 @@ function NativeNearbyUI({
       {call.phase === 'idle' && (
         <div className="nearby-actions">
           <p className="nearby-note" style={{ padding: '0 0.25rem' }}>
-            Bluetooth only — no Wi‑Fi or internet. You appear as{' '}
-            <strong>Presence/{displayName}</strong>. Keep Bluetooth on. If only
-            one side sees the other, connect from that side.
+            Bluetooth Low Energy — no internet required. You appear as{' '}
+            <strong>Presence/{displayName}</strong>. Keep Bluetooth on. Text chat
+            works on this pipe; voice and files are coming later. If only one
+            side sees the other, connect from that side.
           </p>
           <button type="button" onClick={() => void onFindNearby()}>
             Find nearby
@@ -274,20 +281,37 @@ function NativeNearbyUI({
           peerName={call.remoteName}
           fingerprint={call.remoteFingerprint}
           verified={call.pinStatus === 'known'}
-          recordingNote={call.recordingNote}
-          fileTransfer={call.fileTransfer}
+          recordingNote={NEARBY_NATIVE_TEXT_ONLY ? false : call.recordingNote}
+          fileTransfer={NEARBY_NATIVE_TEXT_ONLY ? null : call.fileTransfer}
           onSend={(text, replyTo) => void call.sendChat(text, replyTo)}
           onReact={(msgId, emoji) => void call.sendReaction(msgId, emoji)}
-          onSendSticker={(b64, mime) => void call.sendStickerMsg(b64, mime)}
-          onStartVoice={() =>
-            void withMicPrime(() => void call.startVoiceNote())
+          onSendSticker={
+            NEARBY_NATIVE_TEXT_ONLY
+              ? undefined
+              : (b64, mime) => void call.sendStickerMsg(b64, mime)
           }
-          onStopVoice={() => void call.stopVoiceNote()}
-          onCancelVoice={call.cancelVoiceNote}
-          onPickFile={() => fileRef.current?.click()}
-          onCancelFile={call.cancelFile}
+          onStartVoice={
+            NEARBY_NATIVE_TEXT_ONLY
+              ? undefined
+              : () => void withMicPrime(() => void call.startVoiceNote())
+          }
+          onStopVoice={
+            NEARBY_NATIVE_TEXT_ONLY
+              ? undefined
+              : () => void call.stopVoiceNote()
+          }
+          onCancelVoice={
+            NEARBY_NATIVE_TEXT_ONLY ? undefined : call.cancelVoiceNote
+          }
+          onPickFile={
+            NEARBY_NATIVE_TEXT_ONLY
+              ? undefined
+              : () => fileRef.current?.click()
+          }
+          onCancelFile={NEARBY_NATIVE_TEXT_ONLY ? undefined : call.cancelFile}
         />
       )}
+      {!NEARBY_NATIVE_TEXT_ONLY && (
       <input
         ref={fileRef}
         type="file"
@@ -298,7 +322,9 @@ function NativeNearbyUI({
           if (f) void call.sendFile(f)
         }}
       />
+      )}
 
+      {!NEARBY_NATIVE_TEXT_ONLY && (
       <CallStage
         open
         phase={call.phase}
@@ -321,6 +347,7 @@ function NativeNearbyUI({
         onToggleMute={call.toggleMute}
         onToggleSpeaker={call.toggleSpeaker}
       />
+      )}
     </div>
   )
 }

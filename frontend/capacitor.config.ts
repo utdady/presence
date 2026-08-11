@@ -8,8 +8,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    // Load the Fly-hosted SPA so `fly deploy` updates the app UI without a new APK.
-    // Native Bluetooth plugin still requires a rebuilt APK when Java/plugin code changes.
+    iosScheme: 'https',
+    // Load the Fly-hosted SPA so `fly deploy` updates the app UI without a new native build.
+    // Native Bluetooth plugin still requires a rebuilt app when plugin code changes.
     url: LIVE_URL,
     cleartext: false,
     allowNavigation: ['presence-addy.fly.dev'],

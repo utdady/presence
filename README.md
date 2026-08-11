@@ -209,20 +209,35 @@ are physically nearby. Discovery and data use **Bluetooth Classic RFCOMM only** 
 session (sign in once beforehand so identity keys exist). Cellular and Wi‑Fi can
 stay completely off; keep **Bluetooth** on.
 
-| Client | Nearby offline BT |
-|--------|-------------------|
-| **Android APK** | Yes (Capacitor plugin) |
-| **Windows desktop (Tauri)** | Yes (same RFCOMM UUID / framing as Android) |
-| **macOS desktop (Tauri)** | No (shell + online chat; Nearby uses online rooms) |
-| **Browser alone** | No — optional **online rooms** need the Presence server |
+| Client | Nearby offline BLE (v1 text) |
+|--------|------------------------------|
+| **Android APK** | Yes — BLE GATT (see `plugins/presence-nearby/PROTOCOL.md`) |
+| **iOS (Xcode sideload)** | Yes — CoreBluetooth, same GATT profile |
+| **Windows / macOS desktop** | Not yet (desktop Nearby falls back to online/LAN rooms until Tauri BLE lands) |
+| **Browser alone** | No — online rooms via the Presence server |
 
-On Android 12+ you only need Bluetooth permissions; Android 6–11 may ask for
-Location so classic scan can work (not GPS tracking by Presence).
+Nearby BLE v1 carries **encrypted text chat + key handshake** only. Voice notes,
+files, and Nearby A/V are gated until a faster local media hop exists.
 
-Voice is short encrypted audio chunks over the same RFCOMM stream
-(talkie-quality). Chat uses the same encrypted session.
+Wire format and dual-role advertise/scan: [`frontend/plugins/presence-nearby/PROTOCOL.md`](frontend/plugins/presence-nearby/PROTOCOL.md).
 
-Phone↔phone and **Windows desktop↔phone** use the same protocol.
+### Presence iOS (Xcode sideload)
+
+Requires a **Mac** with Xcode. Free Apple ID works for ~7-day device installs.
+
+```bash
+cd frontend
+npm install
+npm run build
+npx cap sync ios
+npm run cap:ios   # opens Xcode
+```
+
+In Xcode: select your Team (Personal Team), plug in the iPhone, Run.
+Re-install about every 7 days when the free provisioning profile expires.
+
+Privacy strings (camera / mic / Bluetooth) are in `ios/App/App/Info.plist`.
+UI loads from `https://presence-addy.fly.dev` (same as Android).
 
 ### Presence desktop (Windows / macOS)
 
@@ -269,11 +284,11 @@ message → **Open Anyway**. For calls, also allow Camera and Microphone for Pre
 Inside the running app: **Settings → Can't open on Mac? Help** (copy buttons).
 Desktop shells also show an in-app banner when a newer Windows/Mac build is on GitHub.
 
-Bluetooth Nearby (Windows): enable system Bluetooth, then Nearby → **Find nearby**.
-Pair with an Android device also scanning (APK build that includes RFCOMM Nearby).
+Bluetooth Nearby (Windows): temporarily uses **online/LAN rooms** until Tauri BLE
+ships. Android↔Android and Android↔iOS use BLE text Nearby.
 
-Native code: `frontend/src-tauri/` (commands + Windows `nearby` RFCOMM module;
-`Info.plist` / `Entitlements.plist` for macOS camera & mic).
+Native code: `frontend/plugins/presence-nearby/` (Android Kotlin + iOS Swift BLE);
+`frontend/src-tauri/` desktop shell (`Info.plist` / entitlements for Mac camera & mic).
 
 
 ### Build a sideloadable APK (no Play Store)
