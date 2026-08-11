@@ -45,7 +45,7 @@
       "entitlements": "./Entitlements.plist"
     },
     "shortDescription": "Presence Beta — live messaging and Nearby",
-    "longDescription": "Presence (Beta): hub chat online; offline Nearby via Bluetooth RFCOMM on Windows/Android (Mac uses online Nearby rooms)."
+    "longDescription": "Presence (Beta): hub chat online; offline Nearby text via BLE on Android, iOS, Windows, and macOS."
   },
   "plugins": {}
 }
