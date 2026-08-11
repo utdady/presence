@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { hapticLight } from '../haptics'
 import { snapDataUrl } from '../snapImage'
 import type { SnapTimerSec } from '../types'
 
@@ -21,6 +22,7 @@ export function SnapViewer({
   function finish() {
     if (closedRef.current) return
     closedRef.current = true
+    hapticLight()
     onClose()
   }
 

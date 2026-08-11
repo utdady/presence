@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createInvite, fetchInvites, revokeInvite } from '../api'
 import type { InvitePublic } from '../types'
+import { hapticError, hapticLight, hapticMedium, hapticSuccess } from '../haptics'
 
 export function InvitesPanel({ token }: { token: string }) {
   const [invites, setInvites] = useState<InvitePublic[]>([])
@@ -23,6 +24,7 @@ export function InvitesPanel({ token }: { token: string }) {
   async function onCreate() {
     setError(null)
     setBusy(true)
+    hapticMedium()
     try {
       const inv = await createInvite(token, {
         label: label.trim() || undefined,
@@ -33,7 +35,9 @@ export function InvitesPanel({ token }: { token: string }) {
       const url = `${window.location.origin}/?invite=${encodeURIComponent(inv.code)}`
       await navigator.clipboard.writeText(url)
       setCopied(inv.code)
+      hapticSuccess()
     } catch (e) {
+      hapticError()
       setError(e instanceof Error ? e.message : 'Create failed')
     } finally {
       setBusy(false)
@@ -42,15 +46,18 @@ export function InvitesPanel({ token }: { token: string }) {
 
   async function onRevoke(code: string) {
     setError(null)
+    hapticMedium()
     try {
       const inv = await revokeInvite(token, code)
       setInvites((prev) => prev.map((i) => (i.code === code ? inv : i)))
     } catch (e) {
+      hapticError()
       setError(e instanceof Error ? e.message : 'Revoke failed')
     }
   }
 
   function copyLink(code: string) {
+    hapticLight()
     const url = `${window.location.origin}/?invite=${encodeURIComponent(code)}`
     void navigator.clipboard.writeText(url).then(() => setCopied(code))
   }

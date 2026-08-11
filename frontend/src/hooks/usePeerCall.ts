@@ -127,7 +127,11 @@ export function usePeerCall(opts: UsePeerCallOptions) {
 
   /** Route earpiece vs speaker. Voice defaults earpiece until user enables speaker. */
   const applyOutputRoute = useCallback(() => {
-    void applySpeakerRoute(remoteAudioRef.current, speakerRef.current)
+    void applySpeakerRoute(
+      remoteAudioRef.current,
+      speakerRef.current,
+      localStreamRef.current,
+    )
   }, [])
 
   const attachRemoteMedia = useCallback(() => {
@@ -735,7 +739,11 @@ export function usePeerCall(opts: UsePeerCallOptions) {
     const next = !speakerRef.current
     speakerRef.current = next
     setSpeakerOn(next)
-    void applySpeakerRoute(remoteAudioRef.current, next)
+    void applySpeakerRoute(
+      remoteAudioRef.current,
+      next,
+      localStreamRef.current,
+    )
   }, [])
 
   const setRemoteAudioEl = useCallback(
@@ -744,7 +752,7 @@ export function usePeerCall(opts: UsePeerCallOptions) {
       attachRemoteMedia()
       // Always re-apply route so Android earpiece is forced, not only when speaker is on.
       if (el && phaseRef.current === 'in_call') {
-        void applySpeakerRoute(el, speakerRef.current)
+        void applySpeakerRoute(el, speakerRef.current, localStreamRef.current)
       }
     },
     [attachRemoteMedia],

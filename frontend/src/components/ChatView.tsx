@@ -13,6 +13,7 @@ import {
   measureBlobDurationMs,
   pickRecorderMime,
 } from '../voiceAudio'
+import { hapticLight, hapticMedium, hapticSelection } from '../haptics'
 import { Avatar } from './Avatar'
 import { BrandMark } from './BrandMark'
 import {
@@ -188,6 +189,7 @@ export function ChatView({
 
   async function startRecording() {
     if (unavailable || !canEncrypt || recording) return
+    hapticMedium()
     setRecError(null)
     if (await shouldShowPrime('microphone')) {
       pendingMediaAction.current = 'record'
@@ -244,6 +246,7 @@ export function ChatView({
   }
 
   function stopRecording() {
+    hapticLight()
     const rec = mediaRecorderRef.current
     if (!rec || rec.state === 'inactive') {
       stopMicTracks()
@@ -312,6 +315,7 @@ export function ChatView({
     e.preventDefault()
     const trimmed = text.trim()
     if (!trimmed || unavailable || !canEncrypt) return
+    hapticMedium()
     onSend(trimmed, replyTo ?? undefined)
     setText('')
     setReplyTo(null)
@@ -334,6 +338,7 @@ export function ChatView({
   }
 
   function insertEmoji(glyph: string) {
+    hapticSelection()
     setText((t) => t + glyph)
     textInputRef.current?.focus()
   }
@@ -347,6 +352,7 @@ export function ChatView({
 
   async function beginVoiceCall() {
     if (!onStartCall) return
+    hapticMedium()
     if (await shouldShowPrime('microphone')) {
       pendingMediaAction.current = 'audio'
       setMicPrime(true)
@@ -357,6 +363,7 @@ export function ChatView({
 
   async function beginVideoCall() {
     if (!onStartCall) return
+    hapticMedium()
     if (await shouldShowPrime('camera')) {
       pendingMediaAction.current = 'video'
       setCamPrime(true)
@@ -802,6 +809,7 @@ export function ChatView({
                             key={emoji}
                             type="button"
                             onClick={() => {
+                              hapticLight()
                               onReact(m.id, emoji)
                               setMenuMsgId(null)
                             }}
@@ -821,6 +829,7 @@ export function ChatView({
                       {reactMore && (
                         <EmojiPicker
                           onPick={(g) => {
+                            hapticSelection()
                             onReact(m.id, g)
                             setMenuMsgId(null)
                             setReactMore(false)
@@ -919,7 +928,10 @@ export function ChatView({
                 className="composer-tool"
                 aria-label="Take a snap"
                 disabled={unavailable || !canEncrypt}
-                onClick={() => setCapturing(true)}
+                onClick={() => {
+                  hapticLight()
+                  setCapturing(true)
+                }}
               >
                 <CamIcon />
               </button>

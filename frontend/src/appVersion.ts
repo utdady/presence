@@ -19,7 +19,7 @@ export const APP_CHANNEL = 'beta' as const
  * Fallback product revision when native build info is unavailable (web / desktop).
  * Align with latest shipped APK versionCode when you cut a release.
  */
-export const APP_VERSION_CODE = 23
+export const APP_VERSION_CODE = 25
 
 /** Short marketing form: 0.16 */
 export function marketingVersion(code: number = APP_VERSION_CODE): string {

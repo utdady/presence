@@ -752,16 +752,18 @@ public class PresenceNearbyPlugin extends Plugin {
         // Voice path: MODE_IN_COMMUNICATION + speaker off = earpiece / handset.
         am.setMode(AudioManager.MODE_IN_COMMUNICATION);
         // setSpeakerphoneOn is deprecated but still the reliable WebView path.
+        // Avoid flipping mode twice — a second MODE_IN_COMMUNICATION + route
+        // change desyncs WebRTC AEC. Only reassert speaker-off if it stuck on.
         am.setSpeakerphoneOn(on);
         if (!on) {
-            // Some devices ignore the first false; reassert after a tick.
-            mainHandler.post(() -> {
+            mainHandler.postDelayed(() -> {
                 try {
-                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                    am.setSpeakerphoneOn(false);
+                    if (am.isSpeakerphoneOn()) {
+                        am.setSpeakerphoneOn(false);
+                    }
                 } catch (Exception ignored) {
                 }
-            });
+            }, 80);
         }
         call.resolve();
     }

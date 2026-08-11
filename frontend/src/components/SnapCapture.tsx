@@ -5,6 +5,7 @@ import {
 } from '../featurePermissions'
 import { videoFrameToSnapJpeg } from '../snapImage'
 import type { SnapTimerSec } from '../types'
+import { hapticLight, hapticMedium, hapticSelection } from '../haptics'
 import { PermissionPrime } from './PermissionPrime'
 
 const TIMERS: { label: string; value: SnapTimerSec }[] = [
@@ -104,6 +105,7 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
   async function handleShutter() {
     const video = videoRef.current
     if (!video || busy) return
+    hapticMedium()
     setBusy(true)
     setError(null)
     try {
@@ -118,11 +120,13 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
   }
 
   function handleRetake() {
+    hapticLight()
     setFrozenB64(null)
   }
 
   function handleSend() {
     if (!frozenB64) return
+    hapticMedium()
     stopStream()
     onSend(frozenB64, timerSec)
   }
@@ -197,7 +201,10 @@ export function SnapCapture({ onSend, onClose }: SnapCaptureProps) {
             key={t.value}
             type="button"
             className={`snap-timer-chip${timerSec === t.value ? ' snap-timer-chip--on' : ''}`}
-            onClick={() => setTimerSec(t.value)}
+            onClick={() => {
+              hapticSelection()
+              setTimerSec(t.value)
+            }}
           >
             {t.label}
           </button>

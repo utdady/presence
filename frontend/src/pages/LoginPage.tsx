@@ -8,6 +8,7 @@ import {
 import { formatProductVersion } from '../appVersion'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
+import { hapticError, hapticLight, hapticMedium, hapticSuccess } from '../haptics'
 
 function EyeIcon({ open }: { open: boolean }) {
   if (open) {
@@ -76,6 +77,7 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
     e.preventDefault()
     setError(null)
     setBusy(true)
+    hapticMedium()
     try {
       const user = username.trim()
       await login(user, password)
@@ -84,7 +86,9 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
       } else {
         clearRememberedCreds()
       }
+      hapticSuccess()
     } catch (err) {
+      hapticError()
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setBusy(false)
@@ -129,7 +133,10 @@ export function LoginPage({ onJoin }: { onJoin?: () => void }) {
               <button
                 type="button"
                 className="password-toggle"
-                onClick={() => setShowPassword((v) => !v)}
+                onClick={() => {
+                  hapticLight()
+                  setShowPassword((v) => !v)
+                }}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 aria-pressed={showPassword}
               >

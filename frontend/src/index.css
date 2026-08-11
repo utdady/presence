@@ -1523,6 +1523,14 @@ input:focus {
     linear-gradient(160deg, #0e1114 0%, #1a222c 55%, #0e1114 100%);
 }
 
+.call-stage--audio .call-stage-bg {
+  background:
+    radial-gradient(circle at 50% 32%, rgba(90, 130, 160, 0.38) 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 70%, rgba(40, 55, 70, 0.55) 0%, transparent 55%),
+    linear-gradient(165deg, #0c1014 0%, #18222c 48%, #0c1014 100%);
+  filter: saturate(1.05);
+}
+
 .call-stage-body {
   position: relative;
   z-index: 1;
@@ -1536,6 +1544,22 @@ input:focus {
   width: 100%;
 }
 
+.call-stage-minimize {
+  position: absolute;
+  top: calc(0.65rem + env(safe-area-inset-top, 0px));
+  right: 0.75rem;
+  z-index: 5;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .call-stage-label {
   margin: 0;
   font-size: 0.75rem;
@@ -1545,6 +1569,7 @@ input:focus {
 }
 
 .call-stage-avatar {
+  position: relative;
   width: 5.5rem;
   height: 5.5rem;
   border-radius: 50%;
@@ -1556,11 +1581,47 @@ input:focus {
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
+.call-stage-avatar-ring {
+  position: absolute;
+  inset: -0.45rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.call-stage-avatar--pulse .call-stage-avatar-ring {
+  animation: call-avatar-ring 1.8s ease-out infinite;
+}
+
+@keyframes call-avatar-ring {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
 .call-stage-name {
   margin: 0;
   font-size: 1.65rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.call-stage-timer {
+  margin: 0;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
 }
 
 .call-stage-sub {
@@ -1575,8 +1636,110 @@ input:focus {
 }
 
 .call-stage-quality {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   color: #f2b544;
   opacity: 1;
+}
+
+.call-stage-signal {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.call-stage-signal-bar--pulse {
+  animation: call-signal-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes call-signal-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.call-stage-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  max-width: 18rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: rgba(244, 244, 245, 0.88);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.65rem;
+}
+
+.call-stage-tip-dismiss {
+  border: none;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.call-mini-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: calc(0.55rem + env(safe-area-inset-top, 0px)) 1rem 0.55rem;
+  border: none;
+  background: #1a7f4a;
+  color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.call-mini-bar-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #fff;
+  animation: call-mini-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes call-mini-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+.call-mini-bar-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-mini-bar-quality {
+  color: #ffe08a;
 }
 
 .call-stage-actions {
@@ -1691,8 +1854,6 @@ input:focus {
 
 .call-stage-local-video {
   position: absolute;
-  right: 1rem;
-  top: 1rem;
   width: min(28vw, 7.5rem);
   aspect-ratio: 3 / 4;
   object-fit: cover;
@@ -1701,6 +1862,47 @@ input:focus {
   background: #111;
   border: 1px solid rgba(255, 255, 255, 0.25);
   transform: scaleX(-1);
+  touch-action: none;
+  cursor: grab;
+  transition:
+    left 0.18s ease,
+    right 0.18s ease,
+    top 0.18s ease,
+    bottom 0.18s ease;
+}
+
+.call-stage-local-video--tr {
+  top: 1rem;
+  right: 1rem;
+  left: auto;
+  bottom: auto;
+}
+
+.call-stage-local-video--tl {
+  top: 1rem;
+  left: 1rem;
+  right: auto;
+  bottom: auto;
+}
+
+.call-stage-local-video--br {
+  bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  right: 1rem;
+  top: auto;
+  left: auto;
+}
+
+.call-stage-local-video--bl {
+  bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  left: 1rem;
+  top: auto;
+  right: auto;
+}
+
+.call-stage-local-video.is-dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: 4;
 }
 
 .call-stage-local-video.is-off {

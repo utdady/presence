@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { hapticLight, hapticSelection } from '../haptics'
 import { EmojiPicker } from './EmojiPicker'
 import { StickerPicker } from './StickerPicker'
 
@@ -40,7 +41,10 @@ export function ComposerMediaTray({
           <button
             type="button"
             className={effectiveTab === 'emoji' ? 'is-active' : undefined}
-            onClick={() => onTabChange('emoji')}
+            onClick={() => {
+              hapticSelection()
+              onTabChange('emoji')
+            }}
           >
             Emoji
           </button>
@@ -49,7 +53,10 @@ export function ComposerMediaTray({
           <button
             type="button"
             className={effectiveTab === 'stickers' ? 'is-active' : undefined}
-            onClick={() => onTabChange('stickers')}
+            onClick={() => {
+              hapticSelection()
+              onTabChange('stickers')
+            }}
           >
             Stickers
           </button>
@@ -57,7 +64,10 @@ export function ComposerMediaTray({
         <button
           type="button"
           className="ghost-btn composer-media-done"
-          onClick={onClose}
+          onClick={() => {
+            hapticLight()
+            onClose()
+          }}
         >
           Done
         </button>
@@ -102,7 +112,10 @@ export function ComposerMediaButton({
       }
       aria-expanded={open}
       disabled={disabled}
-      onClick={onClick}
+      onClick={() => {
+        hapticLight()
+        onClick()
+      }}
     >
       <StickerFaceIcon />
     </button>

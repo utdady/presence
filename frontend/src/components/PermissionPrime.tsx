@@ -1,4 +1,5 @@
 import { FEATURE_PRIME, type FeatureKind } from '../featurePermissions'
+import { hapticLight, hapticMedium } from '../haptics'
 
 export function PermissionPrime({
   feature,
@@ -16,10 +17,23 @@ export function PermissionPrime({
         <h2 id="perm-prime-title">{copy.title}</h2>
         <p>{copy.body}</p>
         <div className="perm-prime-actions">
-          <button type="button" className="ghost-btn" onClick={onNotNow}>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => {
+              hapticLight()
+              onNotNow()
+            }}
+          >
             {copy.denyLabel}
           </button>
-          <button type="button" onClick={onContinue}>
+          <button
+            type="button"
+            onClick={() => {
+              hapticMedium()
+              onContinue()
+            }}
+          >
             {copy.allowLabel}
           </button>
         </div>

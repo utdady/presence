@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { hapticLight } from '../haptics'
 import { formatDuration, voiceObjectUrl } from '../voiceAudio'
 import { claimVoicePlayback, releaseVoicePlayback } from '../voicePlayback'
 
@@ -96,6 +97,7 @@ export function VoiceBubble({ audioB64, mime, durationMs }: VoiceBubbleProps) {
   async function toggle(e: MouseEvent) {
     e.stopPropagation()
     setError(false)
+    hapticLight()
     try {
       const a = ensureAudio()
       if (playing) {

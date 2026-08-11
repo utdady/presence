@@ -7,6 +7,7 @@ import {
   STICKER_MAX_COUNT,
   type StickerRecord,
 } from '../stickerStore'
+import { hapticLight, hapticMedium } from '../haptics'
 
 interface StickerPickerProps {
   onSend: (imageB64: string, mime: string) => void
@@ -99,7 +100,10 @@ export function StickerPicker({ onSend, onClose, disabled }: StickerPickerProps)
               <button
                 type="button"
                 disabled={disabled || busy}
-                onClick={() => onSend(s.imageB64, s.mime)}
+                onClick={() => {
+                  hapticMedium()
+                  onSend(s.imageB64, s.mime)
+                }}
                 aria-label={`Send ${s.name}`}
               >
                 <img
@@ -112,7 +116,10 @@ export function StickerPicker({ onSend, onClose, disabled }: StickerPickerProps)
                 type="button"
                 className="sticker-picker-del"
                 aria-label={`Delete ${s.name}`}
-                onClick={() => void onDelete(s.id)}
+                onClick={() => {
+                  hapticLight()
+                  void onDelete(s.id)
+                }}
               >
                 ×
               </button>

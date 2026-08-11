@@ -18,6 +18,7 @@ import { EmojiPicker } from '../components/EmojiPicker'
 import { VoiceBubble } from '../components/VoiceBubble'
 import { QUICK_REACTIONS } from '../emojiData'
 import { useEdgeSwipeBack } from '../navigation/useBackStack'
+import { hapticMedium } from '../haptics'
 
 interface Props {
   userId: string
@@ -73,10 +74,18 @@ function NativeNearbyUI({
   const audioRef = useRef<HTMLAudioElement>(null)
   const [nearbyPrime, setNearbyPrime] = useState(false)
   const [micPrime, setMicPrime] = useState(false)
+  const [callMinimized, setCallMinimized] = useState(false)
   const pendingMicAction = useRef<null | (() => void)>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEdgeSwipeBack(true, () => {
+    if (
+      (call.phase === 'outgoing' || call.phase === 'in_call') &&
+      !callMinimized
+    ) {
+      setCallMinimized(true)
+      return
+    }
     void call.stopScanning()
     onBack()
   })
@@ -85,7 +94,18 @@ function NativeNearbyUI({
     call.setRemoteAudioEl(audioRef.current)
   }, [call])
 
+  useEffect(() => {
+    if (
+      call.phase !== 'incoming' &&
+      call.phase !== 'outgoing' &&
+      call.phase !== 'in_call'
+    ) {
+      setCallMinimized(false)
+    }
+  }, [call.phase])
+
   async function onFindNearby() {
+    hapticMedium()
     if (await shouldShowPrime('nearby')) {
       setNearbyPrime(true)
       return
@@ -160,7 +180,10 @@ function NativeNearbyUI({
           <button
             type="button"
             className="ghost-btn"
-            onClick={() => void withMicPrime(() => void call.startCall())}
+            onClick={() => {
+              hapticMedium()
+              void withMicPrime(() => void call.startCall())
+            }}
           >
             Call
           </button>
@@ -289,6 +312,9 @@ function NativeNearbyUI({
         speakerOn={call.speakerOn}
         speakerAvailable={call.speakerAvailable}
         catchingUp={call.catchingUp}
+        minimized={callMinimized}
+        onMinimize={() => setCallMinimized(true)}
+        onExpand={() => setCallMinimized(false)}
         onAccept={() => void withMicPrime(() => void call.acceptCall())}
         onReject={() => void call.rejectCall()}
         onEnd={() => void call.endCall()}
@@ -311,12 +337,30 @@ function LanNearbyUI({
   const [joinCode, setJoinCode] = useState('')
   const [showOnlineRooms, setShowOnlineRooms] = useState(false)
   const [micPrime, setMicPrime] = useState(false)
+  const [callMinimized, setCallMinimized] = useState(false)
   const pendingMicAction = useRef<null | (() => void)>(null)
 
   useEdgeSwipeBack(true, () => {
+    if (
+      (call.phase === 'outgoing' || call.phase === 'in_call') &&
+      !callMinimized
+    ) {
+      setCallMinimized(true)
+      return
+    }
     call.leaveRoom()
     onBack()
   })
+
+  useEffect(() => {
+    if (
+      call.phase !== 'incoming' &&
+      call.phase !== 'outgoing' &&
+      call.phase !== 'in_call'
+    ) {
+      setCallMinimized(false)
+    }
+  }, [call.phase])
 
   useEffect(() => {
     call.setRemoteAudioEl(audioRef.current)
@@ -373,7 +417,10 @@ function LanNearbyUI({
           <button
             type="button"
             className="ghost-btn"
-            onClick={() => void withMicPrime(() => void call.startCall())}
+            onClick={() => {
+              hapticMedium()
+              void withMicPrime(() => void call.startCall())
+            }}
           >
             Call
           </button>
@@ -494,6 +541,9 @@ function LanNearbyUI({
             : 'Internet room'
         }
         muted={call.muted}
+        minimized={callMinimized}
+        onMinimize={() => setCallMinimized(true)}
+        onExpand={() => setCallMinimized(false)}
         onAccept={() => void withMicPrime(() => void call.acceptCall())}
         onReject={() => void call.rejectCall()}
         onEnd={() => void call.endCall()}

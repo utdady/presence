@@ -12,10 +12,29 @@ export function canToggleSpeaker(): boolean {
   return typeof (HTMLMediaElement.prototype as SinkAudio).setSinkId === 'function'
 }
 
+/**
+ * After a native AudioManager route flip, WebRTC's AEC can lose its render
+ * reference. Briefly bounce live audio tracks so it reacquires — skip tracks
+ * the user already muted.
+ */
+async function reacquireAec(localStream?: MediaStream | null): Promise<void> {
+  if (!localStream) return
+  const tracks = localStream
+    .getAudioTracks()
+    .filter((t) => t.readyState === 'live' && t.enabled)
+  if (tracks.length === 0) return
+  for (const t of tracks) t.enabled = false
+  await new Promise((r) => window.setTimeout(r, 50))
+  for (const t of tracks) {
+    if (t.readyState === 'live') t.enabled = true
+  }
+}
+
 /** Loudspeaker vs earpiece / default output. */
 export async function applySpeakerRoute(
   audio: HTMLAudioElement | null,
   speakerOn: boolean,
+  localStream?: MediaStream | null,
 ): Promise<void> {
   if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
     try {
@@ -23,6 +42,9 @@ export async function applySpeakerRoute(
     } catch {
       /* plugin missing on old APK */
     }
+    // Earpiece path may reassert natively ~80ms later — wait, then bounce AEC.
+    await new Promise((r) => window.setTimeout(r, speakerOn ? 40 : 120))
+    await reacquireAec(localStream)
     return
   }
 

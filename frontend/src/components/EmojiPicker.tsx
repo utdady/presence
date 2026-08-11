@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { EMOJI_CATEGORIES } from '../emojiData'
+import { hapticLight, hapticSelection } from '../haptics'
 
 interface EmojiPickerProps {
   onPick: (emoji: string) => void
@@ -33,7 +34,14 @@ export function EmojiPicker({ onPick, onClose }: EmojiPickerProps) {
           autoComplete="off"
         />
         {onClose && (
-          <button type="button" className="ghost-btn" onClick={onClose}>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => {
+              hapticLight()
+              onClose()
+            }}
+          >
             Done
           </button>
         )}
@@ -45,7 +53,10 @@ export function EmojiPicker({ onPick, onClose }: EmojiPickerProps) {
               key={c.id}
               type="button"
               className={c.id === catId ? 'is-active' : undefined}
-              onClick={() => setCatId(c.id)}
+              onClick={() => {
+                hapticSelection()
+                setCatId(c.id)
+              }}
             >
               {c.label}
             </button>
@@ -58,7 +69,10 @@ export function EmojiPicker({ onPick, onClose }: EmojiPickerProps) {
             key={`${e.glyph}-${e.name}`}
             type="button"
             title={e.name}
-            onClick={() => onPick(e.glyph)}
+            onClick={() => {
+              hapticSelection()
+              onPick(e.glyph)
+            }}
           >
             {e.glyph}
           </button>

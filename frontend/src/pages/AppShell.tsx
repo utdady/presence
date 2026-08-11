@@ -34,6 +34,7 @@ import {
   resolveInstalledVersionCode,
 } from '../appVersion'
 import { formatPingCountdown } from '../pingFormat'
+import { hapticHeavy, hapticLight, hapticSelection } from '../haptics'
 
 export function AppShell() {
   const { user, token, publicKey, privateKey, logout } = useAuth()
@@ -94,6 +95,7 @@ function PresenceInner({
   const [desktopBannerVisible, setDesktopBannerVisible] = useState(false)
   const [pingTick, setPingTick] = useState(0)
   const [versionLine, setVersionLine] = useState(() => formatProductVersion())
+  const [callMinimized, setCallMinimized] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -157,8 +159,19 @@ function PresenceInner({
   useEffect(() => {
     if (peerCall.phase === 'incoming' && peerCall.remoteName) {
       setActivePeerId(peerCall.remoteName)
+      setCallMinimized(false)
     }
   }, [peerCall.phase, peerCall.remoteName, setActivePeerId])
+
+  useEffect(() => {
+    if (
+      peerCall.phase !== 'incoming' &&
+      peerCall.phase !== 'outgoing' &&
+      peerCall.phase !== 'in_call'
+    ) {
+      setCallMinimized(false)
+    }
+  }, [peerCall.phase])
 
   useBackStack([
     () => {
@@ -167,8 +180,16 @@ function PresenceInner({
         peerCall.phase === 'outgoing' ||
         peerCall.phase === 'in_call'
       ) {
-        if (peerCall.phase === 'incoming') peerCall.rejectCall()
-        else peerCall.endCall()
+        if (peerCall.phase === 'incoming') {
+          peerCall.rejectCall()
+          return true
+        }
+        // Prefer minimize over hangup so chat stays reachable mid-call.
+        if (!callMinimized) {
+          setCallMinimized(true)
+          return true
+        }
+        peerCall.endCall()
         return true
       }
       return false
@@ -330,7 +351,10 @@ function PresenceInner({
                   className="icon-btn"
                   aria-label="Members"
                   title="Members"
-                  onClick={() => setMembersMode(true)}
+                  onClick={() => {
+                    hapticLight()
+                    setMembersMode(true)
+                  }}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
                     <path
@@ -351,7 +375,10 @@ function PresenceInner({
                   className="icon-btn"
                   aria-label="Invites"
                   title="Invites"
-                  onClick={() => setInvitesMode(true)}
+                  onClick={() => {
+                    hapticLight()
+                    setInvitesMode(true)
+                  }}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
                     <path
@@ -374,7 +401,10 @@ function PresenceInner({
               className="icon-btn"
               aria-label="Nearby"
               title="Nearby"
-              onClick={() => setNearbyMode(true)}
+              onClick={() => {
+                hapticLight()
+                setNearbyMode(true)
+              }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
                 <path
@@ -436,7 +466,10 @@ function PresenceInner({
                 <button
                   type="button"
                   className={`friend-row${peer.online ? '' : ' friend-row--offline'}${hasUnread ? ' friend-row--unread' : ''}${isActive ? ' friend-row--active' : ''}${outPing || inPing ? ' friend-row--ping' : ''}`}
-                  onClick={() => setActivePeerId(peer.id)}
+                  onClick={() => {
+                    hapticSelection()
+                    setActivePeerId(peer.id)
+                  }}
                 >
                   <div className="friend-avatar-wrap">
                     <Avatar
@@ -537,7 +570,10 @@ function PresenceInner({
               className="sidebar-settings-toggle"
               aria-expanded={settingsOpen}
               aria-controls="sidebar-settings-panel"
-              onClick={() => setSettingsOpen((o) => !o)}
+              onClick={() => {
+                hapticLight()
+                setSettingsOpen((o) => !o)
+              }}
             >
               <span>Settings</span>
               <svg
@@ -560,7 +596,10 @@ function PresenceInner({
             <button
               type="button"
               className="sidebar-settings-signout"
-              onClick={logout}
+              onClick={() => {
+                hapticHeavy()
+                logout()
+              }}
             >
               Sign out
             </button>
@@ -665,6 +704,9 @@ function PresenceInner({
         offerReady={peerCall.offerReady}
         poorConnection={peerCall.poorConnection}
         error={peerCall.error}
+        minimized={callMinimized}
+        onMinimize={() => setCallMinimized(true)}
+        onExpand={() => setCallMinimized(false)}
         onAccept={() => void peerCall.acceptCall()}
         onReject={peerCall.rejectCall}
         onEnd={peerCall.endCall}

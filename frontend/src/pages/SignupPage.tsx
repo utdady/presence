@@ -4,6 +4,7 @@ import { setRememberedCreds } from '../credentials'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BrandMark } from '../components/BrandMark'
 import { formatProductVersion } from '../appVersion'
+import { hapticError, hapticMedium, hapticSuccess } from '../haptics'
 
 export function SignupPage({
   initialInvite = '',
@@ -26,6 +27,7 @@ export function SignupPage({
     e.preventDefault()
     setError(null)
     setBusy(true)
+    hapticMedium()
     try {
       const user = username.trim()
       await signup({
@@ -37,7 +39,9 @@ export function SignupPage({
       if (remember) {
         setRememberedCreds({ username: user })
       }
+      hapticSuccess()
     } catch (err) {
+      hapticError()
       setError(err instanceof Error ? err.message : 'Signup failed')
     } finally {
       setBusy(false)

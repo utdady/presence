@@ -573,7 +573,11 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
           setPhase('in_call')
           speakerRef.current = false
           setSpeakerOn(false)
-          void applySpeakerRoute(remoteAudioRef.current, false)
+          void applySpeakerRoute(
+            remoteAudioRef.current,
+            false,
+            localStreamRef.current,
+          )
           await startVoiceCapture()
           setStatus(catchingUp ? 'In call — catching up…' : 'In call')
         } catch (e) {
@@ -878,7 +882,11 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
       setPhase('in_call')
       speakerRef.current = false
       setSpeakerOn(false)
-      void applySpeakerRoute(remoteAudioRef.current, false)
+      void applySpeakerRoute(
+        remoteAudioRef.current,
+        false,
+        localStreamRef.current,
+      )
       await startVoiceCapture()
       setStatus('In call')
     } catch (e) {
@@ -926,13 +934,17 @@ export function useNearbyCall(opts: UseNearbyCallOptions) {
     const next = !speakerRef.current
     speakerRef.current = next
     setSpeakerOn(next)
-    void applySpeakerRoute(remoteAudioRef.current, next)
+    void applySpeakerRoute(
+      remoteAudioRef.current,
+      next,
+      localStreamRef.current,
+    )
   }, [])
 
   const setRemoteAudioEl = useCallback((el: HTMLAudioElement | null) => {
     remoteAudioRef.current = el
     if (el && phaseRef.current === 'in_call') {
-      void applySpeakerRoute(el, speakerRef.current)
+      void applySpeakerRoute(el, speakerRef.current, localStreamRef.current)
     }
   }, [])
 

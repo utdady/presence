@@ -1,3 +1,4 @@
+import { hapticSelection } from '../haptics'
 import { useTheme } from '../theme'
 
 export function ThemeToggle() {
@@ -11,7 +12,10 @@ export function ThemeToggle() {
       role="switch"
       aria-checked={dark}
       aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      onClick={toggleTheme}
+      onClick={() => {
+        hapticSelection()
+        toggleTheme()
+      }}
     >
       <span className="theme-switch-track" aria-hidden="true">
         <span className="theme-switch-icon theme-switch-icon--sun">
