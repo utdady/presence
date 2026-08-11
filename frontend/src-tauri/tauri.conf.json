@@ -39,8 +39,12 @@
         "type": "downloadBootstrapper"
       }
     },
-    "shortDescription": "Presence Beta — live messaging and Bluetooth Nearby",
-    "longDescription": "Presence (Beta): hub chat online, offline Nearby via Bluetooth RFCOMM (Windows)."
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-"
+    },
+    "shortDescription": "Presence Beta — live messaging and Nearby",
+    "longDescription": "Presence (Beta): hub chat online; offline Nearby via Bluetooth RFCOMM on Windows/Android (Mac uses online Nearby rooms)."
   },
   "plugins": {}
 }

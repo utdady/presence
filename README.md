@@ -213,6 +213,7 @@ stay completely off; keep **Bluetooth** on.
 |--------|-------------------|
 | **Android APK** | Yes (Capacitor plugin) |
 | **Windows desktop (Tauri)** | Yes (same RFCOMM UUID / framing as Android) |
+| **macOS desktop (Tauri)** | No (shell + online chat; Nearby uses online rooms) |
 | **Browser alone** | No — optional **online rooms** need the Presence server |
 
 On Android 12+ you only need Bluetooth permissions; Android 6–11 may ask for
@@ -223,9 +224,10 @@ Voice is short encrypted audio chunks over the same RFCOMM stream
 
 Phone↔phone and **Windows desktop↔phone** use the same protocol.
 
-### Presence desktop (Windows)
+### Presence desktop (Windows / macOS)
 
-Requires **Rust** (stable) + Visual Studio C++ build tools, Node 22+.
+Requires **Rust** (stable) + Node 22+. On Windows also Visual Studio C++ build
+tools; on macOS, Xcode CLT (`xcode-select --install`).
 
 ```bash
 cd frontend
@@ -233,14 +235,20 @@ npm install
 # Dev (starts Vite + opens the desktop shell)
 npm run desktop:dev
 
-# Release installer / EXE under src-tauri/target/release/bundle/
+# Release bundles under src-tauri/target/release/bundle/
+#   Windows: msi/ and nsis/
+#   macOS:   dmg/ and macos/  (or use desktop:build:macos for universal)
 npm run desktop:build
 ```
 
-Bluetooth: enable system Bluetooth, then Nearby → **Find nearby**. Pair with
-an Android device also scanning (APK build that includes RFCOMM Nearby).
+**Download a Mac build:** GitHub Releases tagged `desktop-macos-*` (CI on `main`
+publishes `Presence-macos-universal.dmg`). First open may need right-click →
+**Open**, or `xattr -cr /Applications/Presence.app`.
 
-Native code: `frontend/src-tauri/` (commands + `nearby` RFCOMM module).
+Bluetooth Nearby (Windows): enable system Bluetooth, then Nearby → **Find nearby**.
+Pair with an Android device also scanning (APK build that includes RFCOMM Nearby).
+
+Native code: `frontend/src-tauri/` (commands + Windows `nearby` RFCOMM module).
 
 
 ### Build a sideloadable APK (no Play Store)

@@ -1,0 +1,96 @@
+name: Build desktop macOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> frontend/src-tauri/target
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build universal .app
+        working-directory: frontend
+        # .app first so we can ad-hoc sign before packing the DMG.
+        run: npx tauri build --target universal-apple-darwin --bundles app
+
+      - name: Ad-hoc codesign + DMG
+        run: |
+          set -euo pipefail
+          APP=$(find frontend/src-tauri/target -path '*/bundle/macos/*.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "No .app bundle found"
+            find frontend/src-tauri/target -type d -name bundle || true
+            exit 1
+          fi
+          echo "Signing $APP"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose=2 "$APP" || true
+
+          mkdir -p releases
+          STAGE=$(mktemp -d)
+          cp -R "$APP" "$STAGE/"
+          hdiutil create \
+            -volname "Presence" \
+            -srcfolder "$STAGE" \
+            -ov \
+            -format UDZO \
+            "releases/Presence-macos-universal.dmg"
+          ls -lh releases/
+          rm -rf "$STAGE"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: presence-macos-dmg
+          path: releases/Presence-macos-universal.dmg
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-macos-${{ github.sha }}
+          name: Presence Desktop macOS · Beta 0.${{ github.run_number }}
+          body: |
+            **Presence · Desktop (macOS)**
+            Universal binary (Apple Silicon + Intel).
+
+            Download **Presence-macos-universal.dmg**, open it, drag **Presence** to Applications.
+
+            First launch (ad-hoc signed, not notarized): right-click the app → **Open**, or:
+            ```bash
+            xattr -cr /Applications/Presence.app
+            ```
+
+            Online chat and calls work. Bluetooth Nearby RFCOMM is Windows/Android only —
+            on Mac, Nearby falls back to online rooms when needed.
+
+            Web UI still loads from production (`https://presence-addy.fly.dev`).
+          files: releases/Presence-macos-universal.dmg
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
