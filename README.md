@@ -211,9 +211,9 @@ stay completely off; keep **Bluetooth** on.
 
 | Client | Nearby offline BLE (v1 text) |
 |--------|------------------------------|
-| **Android APK** | Yes — BLE GATT (see `plugins/presence-nearby/PROTOCOL.md`) |
-| **iOS (Xcode sideload)** | Yes — CoreBluetooth, same GATT profile |
-| **Windows / macOS desktop** | Not yet (desktop Nearby falls back to online/LAN rooms until Tauri BLE lands) |
+| **Android APK** | Yes — BLE GATT peripheral + central |
+| **iOS (Xcode sideload)** | Yes — CoreBluetooth |
+| **Windows / macOS desktop** | Yes — btleplug central (connect from desktop to a phone) |
 | **Browser alone** | No — online rooms via the Presence server |
 
 Nearby BLE v1 carries **encrypted text chat + key handshake** only. Voice notes,
@@ -284,11 +284,12 @@ message → **Open Anyway**. For calls, also allow Camera and Microphone for Pre
 Inside the running app: **Settings → Can't open on Mac? Help** (copy buttons).
 Desktop shells also show an in-app banner when a newer Windows/Mac build is on GitHub.
 
-Bluetooth Nearby (Windows): temporarily uses **online/LAN rooms** until Tauri BLE
-ships. Android↔Android and Android↔iOS use BLE text Nearby.
+Bluetooth Nearby (desktop): enable Bluetooth, Nearby → **Find nearby**, then tap a
+phone that is advertising. Desktop acts as BLE **central** (same GATT profile as
+phones). Voice/files on Nearby remain gated for BLE v1.
 
-Native code: `frontend/plugins/presence-nearby/` (Android Kotlin + iOS Swift BLE);
-`frontend/src-tauri/` desktop shell (`Info.plist` / entitlements for Mac camera & mic).
+Native code: `frontend/plugins/presence-nearby/` (Android Kotlin + iOS Swift);
+`frontend/src-tauri/src/nearby/` (desktop BLE via btleplug).
 
 
 ### Build a sideloadable APK (no Play Store)

@@ -1,10 +1,18 @@
-//! Bluetooth Nearby for Presence desktop.
-//! Same RFCOMM UUID, `Presence/` name prefix, and length-prefixed frames as Android.
+//! Bluetooth Nearby for Presence desktop — BLE GATT (PROTOCOL.md).
+//! Windows + macOS via btleplug central (connect from desktop to a phone).
 
 use thiserror::Error;
 
+mod framing;
+
+#[cfg(any(windows, target_os = "macos"))]
+mod desktop_ble;
+
 #[cfg(windows)]
-mod win;
+mod win_peripheral;
+
+#[cfg(target_os = "macos")]
+mod macos_peripheral;
 
 #[derive(Debug, Error)]
 pub enum NearbyError {
@@ -12,7 +20,7 @@ pub enum NearbyError {
     Msg(String),
     #[error("not connected")]
     NotConnected,
-    #[error("Bluetooth Nearby is only implemented on Windows for now")]
+    #[error("Bluetooth Nearby is not available on this platform")]
     UnsupportedPlatform,
 }
 
@@ -22,28 +30,29 @@ impl NearbyError {
     }
 }
 
-/// Must match Android `PresenceNearbyPlugin` RFCOMM UUID.
-pub const SERVICE_UUID: &str = "8f4e2a10-9c3d-4b7e-a1f2-0d5e6c7b8a9c";
-pub const NAME_PREFIX: &str = "Presence/";
-pub const MAX_PAYLOAD: usize = 512 * 1024;
+pub const NAME_PREFIX: &str = framing::NAME_PREFIX;
 
 pub fn platform_available() -> bool {
-    // Classic RFCOMM removed for BLE cross-platform parity.
-    // WinRT (Windows) + CoreBluetooth (macOS) BLE natives land next;
-    // until then desktop Nearby uses LAN/online fallback via JS capability.
-    false
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        desktop_ble::DesktopBle::available()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        false
+    }
 }
 
 pub struct NearbyManager {
-    #[cfg(windows)]
-    win: win::WinNearby,
+    #[cfg(any(windows, target_os = "macos"))]
+    ble: desktop_ble::DesktopBle,
 }
 
 impl NearbyManager {
     pub fn new() -> Self {
         Self {
-            #[cfg(windows)]
-            win: win::WinNearby::new(),
+            #[cfg(any(windows, target_os = "macos"))]
+            ble: desktop_ble::DesktopBle::new(),
         }
     }
 
@@ -52,11 +61,11 @@ impl NearbyManager {
         app: tauri::AppHandle,
         display_name: String,
     ) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.start_advertising(app, display_name).await;
+            return self.ble.start_advertising(app, display_name).await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let _ = (app, display_name);
             Err(NearbyError::UnsupportedPlatform)
@@ -64,11 +73,11 @@ impl NearbyManager {
     }
 
     pub async fn start_discovery(&mut self, app: tauri::AppHandle) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.start_discovery(app).await;
+            return self.ble.start_discovery(app).await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let _ = app;
             Err(NearbyError::UnsupportedPlatform)
@@ -76,11 +85,11 @@ impl NearbyManager {
     }
 
     pub async fn stop(&mut self) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.stop().await;
+            return self.ble.stop().await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             Ok(())
         }
@@ -91,11 +100,11 @@ impl NearbyManager {
         app: tauri::AppHandle,
         endpoint_id: String,
     ) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.connect(app, endpoint_id).await;
+            return self.ble.connect(app, endpoint_id).await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let _ = (app, endpoint_id);
             Err(NearbyError::UnsupportedPlatform)
@@ -103,22 +112,22 @@ impl NearbyManager {
     }
 
     pub async fn disconnect(&mut self) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.disconnect().await;
+            return self.ble.disconnect().await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             Ok(())
         }
     }
 
     pub async fn send(&self, data: String) -> Result<(), NearbyError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
-            return self.win.send(data).await;
+            return self.ble.send(data).await;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let _ = data;
             Err(NearbyError::UnsupportedPlatform)

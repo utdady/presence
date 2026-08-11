@@ -5,7 +5,7 @@ resolver = "2"
 [package]
 name = "presence-desktop"
 version = "0.25.0"
-description = "Presence Beta desktop shell (Windows Nearby BT; macOS online shell)"
+description = "Presence Beta desktop shell with BLE Nearby"
 authors = ["Presence"]
 edition = "2021"
 
@@ -25,12 +25,10 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
-  "Win32_Foundation",
-  "Win32_Networking_WinSock",
-  "Win32_Devices_Bluetooth",
-] }
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+btleplug = "0.11"
+futures = "0.3"
+uuid = { version = "1", features = ["v4"] }
 
 [profile.release]
 panic = "abort"
