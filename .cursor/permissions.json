@@ -1,0 +1,13 @@
+{
+  "autoRun": {
+    "allow_instructions": [
+      "Allow routine work that only reads or changes files inside /Users/saachibhaskar/Documents/presence."
+    ],
+    "block_instructions": [
+      "Block any shell, script, or tool path that reads, writes, lists, or edits files outside /Users/saachibhaskar/Documents/presence, including /Users/saachibhaskar/Documents itself and any sibling folder under Documents.",
+      "Block accessing parent directories of the workspace (for example /Users/saachibhaskar/Documents or /Users/saachibhaskar).",
+      "Require manual approval for any elevated, unsandboxed, full_network, or all-filesystem permission request.",
+      "Never grant access based only on convenience; stay inside presence unless the user explicitly names a path and approves it in chat."
+    ]
+  }
+}

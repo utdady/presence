@@ -1,0 +1,10 @@
+{
+  "type": "workspace_readwrite",
+  "additionalReadwritePaths": [],
+  "additionalReadonlyPaths": [],
+  "disableTmpWrite": false,
+  "networkPolicy": {
+    "default": "deny",
+    "allow": []
+  }
+}

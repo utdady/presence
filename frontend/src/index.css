@@ -46,6 +46,14 @@ body,
   margin: 0;
 }
 
+html {
+  /* Cap / iOS WKWebView: edge-to-edge with notch / Dynamic Island / home indicator */
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -73,8 +81,8 @@ body {
 
 .login-theme {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  top: calc(0.75rem + var(--sat));
+  right: calc(0.75rem + var(--sar));
   z-index: 2;
 }
 
@@ -475,7 +483,11 @@ input:focus {
   min-height: 100%;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding:
+    calc(1.5rem + var(--sat))
+    calc(1.5rem + var(--sar))
+    calc(1.5rem + var(--sab))
+    calc(1.5rem + var(--sal));
 }
 
 .login-panel {
@@ -574,16 +586,19 @@ input:focus {
 .list-header,
 .chat-header {
   box-sizing: border-box;
-  height: 3.75rem;
-  min-height: 3.75rem;
+  height: auto;
+  min-height: calc(3.75rem + var(--sat));
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border);
+  padding-top: var(--sat);
 }
 
 .list-header {
   justify-content: space-between;
-  padding: 0 0.85rem 0 1rem;
+  padding-right: calc(0.85rem + var(--sar));
+  padding-left: calc(1rem + var(--sal));
+  padding-bottom: 0;
   gap: 0.5rem;
 }
 
@@ -650,11 +665,12 @@ input:focus {
 .sidebar-settings:not(.sidebar-settings--open),
 .composer:not(.composer--multiline):not(.composer--rec) {
   box-sizing: border-box;
-  height: var(--chrome-bar-height);
-  min-height: var(--chrome-bar-height);
-  max-height: var(--chrome-bar-height);
+  height: calc(var(--chrome-bar-height) + var(--sab));
+  min-height: calc(var(--chrome-bar-height) + var(--sab));
+  max-height: calc(var(--chrome-bar-height) + var(--sab));
   margin: 0;
   border-top: 1px solid var(--border);
+  padding-bottom: var(--sab);
 }
 
 .sidebar-settings {
@@ -663,17 +679,18 @@ input:focus {
   flex-direction: column;
   justify-content: center;
   flex-shrink: 0;
-  padding: 0 var(--chrome-bar-pad-x);
+  padding-left: calc(var(--chrome-bar-pad-x) + var(--sal));
+  padding-right: calc(var(--chrome-bar-pad-x) + var(--sar));
   background: var(--bg);
 }
 
 .sidebar-settings--open {
   height: auto;
-  min-height: var(--chrome-bar-height);
+  min-height: calc(var(--chrome-bar-height) + var(--sab));
   max-height: none;
   justify-content: flex-start;
   padding-top: 0.35rem;
-  padding-bottom: 0.35rem;
+  padding-bottom: calc(0.35rem + var(--sab));
   border-top: 1px solid var(--border);
   box-sizing: border-box;
 }
@@ -1047,7 +1064,9 @@ input:focus {
 
 .chat-header {
   gap: 0.75rem;
-  padding: 0 1rem;
+  padding-right: calc(1rem + var(--sar));
+  padding-left: calc(1rem + var(--sal));
+  padding-bottom: 0;
 }
 
 .chat-header-text {
@@ -1192,6 +1211,7 @@ input:focus {
   align-items: stretch;
   flex-shrink: 0;
   padding: 0;
+  padding-bottom: var(--sab);
   background: var(--bg-elevated);
   overflow: hidden;
 }
@@ -1200,7 +1220,7 @@ input:focus {
 .composer.composer--multiline {
   height: auto;
   max-height: none;
-  min-height: var(--chrome-bar-height);
+  min-height: calc(var(--chrome-bar-height) + var(--sab));
   align-items: stretch;
   overflow: visible;
   border-top: 1px solid var(--border);
@@ -1211,10 +1231,11 @@ input:focus {
 .composer.composer--rec {
   height: auto;
   max-height: none;
-  min-height: var(--chrome-bar-height);
+  min-height: calc(var(--chrome-bar-height) + var(--sab));
   align-items: center;
   gap: 0.5rem;
-  padding: 0 var(--chrome-bar-pad-x);
+  padding: 0 calc(var(--chrome-bar-pad-x) + var(--sar)) var(--sab)
+    calc(var(--chrome-bar-pad-x) + var(--sal));
   overflow: visible;
   background: var(--bg);
   border-top: 1px solid var(--border);
@@ -2066,8 +2087,8 @@ input:focus {
 
 .logout-fab {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  top: calc(0.75rem + var(--sat));
+  right: calc(0.75rem + var(--sar));
   background: transparent;
   border-color: transparent;
   color: var(--fg-muted);
@@ -2102,7 +2123,11 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.9rem 1rem;
+  padding:
+    calc(0.9rem + var(--sat))
+    calc(1rem + var(--sar))
+    0.9rem
+    calc(1rem + var(--sal));
   border-bottom: 1px solid var(--border);
 }
 

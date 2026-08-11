@@ -1,12 +1,14 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
+// Package/product name must match CapApp-SPM product refs
+// (.product(name: "PresenceNearby", package: "PresenceNearby")).
 let package = Package(
-    name: "PresenceNearbyPlugin",
+    name: "PresenceNearby",
     platforms: [.iOS(.v14)],
     products: [
         .library(
-            name: "PresenceNearbyPlugin",
+            name: "PresenceNearby",
             targets: ["PresenceNearbyPlugin"]
         )
     ],

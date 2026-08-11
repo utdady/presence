@@ -38,7 +38,7 @@ public class PresenceNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["available": CBCentralManager.authorization != .denied])
     }
 
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc public override func requestPermissions(_ call: CAPPluginCall) {
         _ = eng()
         call.resolve()
     }

@@ -8,13 +8,19 @@ export function BrandMark({
 }) {
   return (
     <span className="brand-mark">
-      <img
+      <svg
         className="brand-mark-icon"
-        src="/favicon.svg"
-        alt=""
         width={size}
         height={size}
-      />
+        viewBox="0 0 64 64"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <rect width="64" height="64" rx="12" fill="#0E1114" />
+        <circle cx="32" cy="32" r="10" stroke="#C4CCD4" strokeWidth="3" />
+        <circle cx="32" cy="32" r="3" fill="#C4CCD4" />
+      </svg>
       {showWord && <span className="brand">Presence</span>}
     </span>
   )

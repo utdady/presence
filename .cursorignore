@@ -1,0 +1,52 @@
+# Secrets & credentials — blocked from Cursor Agent / Tab / @ mentions
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+credentials.local.json
+*.local.json
+**/credentials.json
+**/secrets.json
+**/*secret*
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_ed25519
+**/*.p12
+**/*.pfx
+
+# App secrets used locally (never let the agent read these)
+backend/users.json
+backend/invites.json
+
+# Dependencies & virtualenvs
+node_modules/
+**/node_modules/
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+
+# Build / release outputs
+frontend/dist/
+frontend/src-tauri/target/
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/capacitor-cordova-android-plugins/
+frontend/plugins/**/android/build/
+frontend/plugins/**/node_modules/
+frontend/ios/**/build/
+frontend/ios/**/DerivedData/
+releases/*.apk
+tools/
+
+# Local machine / IDE noise
+frontend/android/local.properties
+.DS_Store
+**/.DS_Store
+*.log
+**/*.log

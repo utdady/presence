@@ -1,0 +1,17 @@
+---
+description: Hard workspace boundary — only Documents/presence
+alwaysApply: true
+---
+
+# Workspace boundary
+
+The only allowed project root is:
+
+`/Users/saachibhaskar/Documents/presence`
+
+Rules:
+- Do not read, list, search, write, or execute against any path outside that directory.
+- Do not access the parent folder `/Users/saachibhaskar/Documents` or any sibling under Documents.
+- Do not use home, Desktop, Downloads, other repos, or absolute paths outside presence.
+- If a task needs anything outside presence, stop and ask for explicit permission with the exact path.
+- Prefer workspace-relative paths. Never request `all` / unsandboxed access just to leave the project tree.
