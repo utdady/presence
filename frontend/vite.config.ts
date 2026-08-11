@@ -46,10 +46,25 @@ export default defineConfig({
           /^\/invites/,
           /^\/members/,
           /^\/nearby/,
+          /^\/webrtc/,
           /^\/ws/,
           /^\/health/,
+          /^\/docs/,
+          /^\/openapi/,
         ],
-        runtimeCaching: [],
+        // Network-first shell so mobile doesn't keep a precached index.html
+        // (and its CSP headers) from a previous deploy.
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 },
+            },
+          },
+        ],
       },
       // Register only in the browser — Capacitor WebView / Tauri must not get a SW.
       injectRegister: false,

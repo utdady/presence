@@ -62,6 +62,10 @@ export type WsIncoming =
       payload: string
     }
   | {
+      /** Transport keepalive from server (not the presence-ping feature). */
+      type: 'hb'
+    }
+  | {
       type: 'ping'
       from: string
       to: string

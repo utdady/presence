@@ -203,10 +203,18 @@ export function usePresenceSession(opts: UsePresenceOptions) {
   useEffect(() => {
     let closed = false
     let retryTimer: number | undefined
+    let watchdogTimer: number | undefined
     let socket: WebSocket | null = null
+    /** Last server transport heartbeat (`hb`). Missing ones → force reconnect. */
+    let lastHbAt = 0
+    const HB_STALE_MS = 55_000
 
     const connect = () => {
       if (closed) return
+      if (watchdogTimer !== undefined) {
+        window.clearInterval(watchdogTimer)
+        watchdogTimer = undefined
+      }
       const ws = new WebSocket(wsUrl(token))
       socket = ws
       wsRef.current = ws
@@ -217,13 +225,28 @@ export function usePresenceSession(opts: UsePresenceOptions) {
           return
         }
         setConnected(true)
+        lastHbAt = Date.now()
         ws.send(JSON.stringify({ type: 'pubkey', payload: publicKey }))
+        // Detect silent NAT/proxy drops: TCP looks fine, but no `hb` arrives.
+        watchdogTimer = window.setInterval(() => {
+          if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return
+          if (Date.now() - lastHbAt < HB_STALE_MS) return
+          try {
+            ws.close()
+          } catch {
+            /* onclose schedules reconnect */
+          }
+        }, 10_000)
       }
 
       ws.onclose = () => {
         if (wsRef.current !== ws) return
         wsRef.current = null
         setConnected(false)
+        if (watchdogTimer !== undefined) {
+          window.clearInterval(watchdogTimer)
+          watchdogTimer = undefined
+        }
         if (!closed) {
           retryTimer = window.setTimeout(connect, 1500)
         }
@@ -235,6 +258,14 @@ export function usePresenceSession(opts: UsePresenceOptions) {
         try {
           data = JSON.parse(ev.data) as WsIncoming
         } catch {
+          return
+        }
+
+        if (data.type === 'hb') {
+          lastHbAt = Date.now()
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'hb_ack' }))
+          }
           return
         }
 
@@ -739,6 +770,10 @@ export function usePresenceSession(opts: UsePresenceOptions) {
     return () => {
       closed = true
       if (retryTimer) window.clearTimeout(retryTimer)
+      if (watchdogTimer !== undefined) {
+        window.clearInterval(watchdogTimer)
+        watchdogTimer = undefined
+      }
       if (socket) {
         if (wsRef.current === socket) wsRef.current = null
         socket.close()

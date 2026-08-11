@@ -436,43 +436,24 @@ function PresenceInner({
             )
           })}
           {session.peers.length === 0 && (
-            <li className="empty-state">
-              <p className="empty-state-sub">
+            <li className="empty-state centered">
+              <BrandMark size={28} showWord={false} />
+              <p className="empty-state-lead">
                 {session.connected
                   ? 'No one in your circle yet.'
                   : 'Connecting…'}
               </p>
+              {session.connected && (
+                <p className="empty-state-sub">
+                  When someone is present, they'll show up here.
+                </p>
+              )}
             </li>
           )}
         </ul>
         <footer
           className={`sidebar-settings${settingsOpen ? ' sidebar-settings--open' : ''}`}
         >
-          <button
-            type="button"
-            className="sidebar-settings-toggle"
-            aria-expanded={settingsOpen}
-            aria-controls="sidebar-settings-panel"
-            onClick={() => setSettingsOpen((o) => !o)}
-          >
-            <span>Settings</span>
-            <svg
-              className="sidebar-settings-chevron"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path
-                d="M6 9l6 6 6-6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
           {settingsOpen && (
             <div id="sidebar-settings-panel" className="sidebar-settings-body">
               <div className="sidebar-settings-row">
@@ -506,18 +487,45 @@ function PresenceInner({
                   Remove photo
                 </button>
               )}
-              <button
-                type="button"
-                className="sidebar-settings-action"
-                onClick={logout}
-              >
-                Sign out
-              </button>
               <p className="sidebar-settings-version" aria-label="App version">
                 {versionLine}
               </p>
             </div>
           )}
+          <div className="sidebar-settings-bar">
+            <button
+              type="button"
+              className="sidebar-settings-toggle"
+              aria-expanded={settingsOpen}
+              aria-controls="sidebar-settings-panel"
+              onClick={() => setSettingsOpen((o) => !o)}
+            >
+              <span>Settings</span>
+              <svg
+                className="sidebar-settings-chevron"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path
+                  d="M6 9l6 6 6-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="sidebar-settings-signout"
+              onClick={logout}
+            >
+              Sign out
+            </button>
+          </div>
         </footer>
       </aside>
 

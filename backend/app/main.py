@@ -42,12 +42,13 @@ app.add_middleware(
 )
 app.include_router(router)
 
-# 'unsafe-inline' script-src is needed for the theme-bootstrap inline script in
-# index.html; everything else is locked to self + the Google Fonts hosts.
+# 'unsafe-inline' script-src: theme-bootstrap inline script in index.html.
+# 'wasm-unsafe-eval': libsodium-wrappers compiles its WASM module at runtime
+# (Chrome/Safari); full 'unsafe-eval' is intentionally NOT allowed.
 _CSP = "; ".join(
     [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
+        "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' data: https://fonts.gstatic.com",
         "img-src 'self' data: blob:",
@@ -84,6 +85,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _html_response(path: Path) -> FileResponse:
+    # Never let browsers/SW keep a stale shell (and its CSP) across deploys.
+    return FileResponse(
+        path,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
 def _mount_spa(static_dir: Path) -> None:
     assets = static_dir / "assets"
     if assets.is_dir():
@@ -95,10 +104,12 @@ def _mount_spa(static_dir: Path) -> None:
         try:
             candidate.relative_to(static_dir.resolve())
         except ValueError:
-            return FileResponse(static_dir / "index.html")
+            return _html_response(static_dir / "index.html")
         if full_path and candidate.is_file():
+            if candidate.suffix.lower() in {".html", ".htm"}:
+                return _html_response(candidate)
             return FileResponse(candidate)
-        return FileResponse(static_dir / "index.html")
+        return _html_response(static_dir / "index.html")
 
 
 _static = settings.resolved_static_dir()

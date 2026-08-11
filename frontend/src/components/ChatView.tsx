@@ -14,6 +14,7 @@ import {
   pickRecorderMime,
 } from '../voiceAudio'
 import { Avatar } from './Avatar'
+import { BrandMark } from './BrandMark'
 import {
   ComposerMediaButton,
   ComposerMediaTray,
@@ -667,7 +668,8 @@ export function ChatView({
 
       <div className="chat-body">
         {unavailable && messages.length === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state centered">
+            <BrandMark size={28} showWord={false} />
             <p className="empty-state-lead">
               {peer.display_name} is currently unavailable
             </p>

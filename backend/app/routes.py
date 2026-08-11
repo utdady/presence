@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import (
@@ -302,6 +303,19 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
     # Always send ping snapshot to this device (multi-device).
     await manager.send_to(websocket, ping_store.snapshot_message(user.id))
 
+    # Transport keepalive — distinct from presence "ping" feature.
+    # Keeps Fly/carrier NAT idle timeouts from silently killing the socket
+    # (which would strand mid-call ICE restarts with no signaling path).
+    async def _heartbeat() -> None:
+        try:
+            while True:
+                await asyncio.sleep(25)
+                if not await manager.send_to(websocket, {"type": "hb"}):
+                    break
+        except asyncio.CancelledError:
+            raise
+
+    hb_task = asyncio.create_task(_heartbeat())
     try:
         while True:
             raw = await websocket.receive_text()
@@ -319,6 +333,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
             payload = data.get("payload")
             msg_id = data.get("msg_id")
             from_id = data.get("from")
+
+            if msg_type == "hb_ack":
+                continue
 
             if msg_type == "pubkey":
                 if not isinstance(payload, str) or not payload:
@@ -489,6 +506,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None) -> 
     except WebSocketDisconnect:
         pass
     finally:
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
         if manager.disconnect(user.id, websocket):
             await manager.notify_presence_change(user.id, online=False)
             # Start offline grace on outgoing pings
