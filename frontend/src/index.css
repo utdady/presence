@@ -178,6 +178,12 @@ input {
   outline: none;
 }
 
+/* Keep text fields ≥16px so iOS does not focus-zoom the WebView */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='hidden']),
+textarea {
+  font-size: 1rem;
+}
+
 input:focus {
   border-color: var(--fg-muted);
 }
@@ -1277,7 +1283,8 @@ input:focus {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 0.95rem;
+  /* ≥16px: iOS WKWebView auto-zooms the page when focusing smaller fields */
+  font-size: 1rem;
   line-height: 1.25;
   padding: 0 0.4rem;
   margin: 0;
