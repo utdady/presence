@@ -33,6 +33,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Resolve marketing version
+        id: ver
+        working-directory: frontend
+        run: |
+          CODE=$(node -p "require('./package.json').version.split('.')[1]")
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "label=0.$CODE" >> "$GITHUB_OUTPUT"
+
       - name: Build universal .app
         working-directory: frontend
         # .app first so we can ad-hoc sign before packing the DMG.
@@ -74,9 +82,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: desktop-macos-${{ github.sha }}
-          name: Presence Desktop macOS · Beta 0.${{ github.run_number }}
+          name: Presence Desktop macOS · Beta ${{ steps.ver.outputs.label }}
           body: |
-            **Presence · Desktop (macOS)** · Beta 0.${{ github.run_number }}
+            **Presence · Desktop (macOS)** · Beta ${{ steps.ver.outputs.label }}
             Universal binary (Apple Silicon + Intel). Includes camera/mic permissions for calls.
 
             ## Install
